@@ -1,0 +1,9 @@
+/identificar_rigol
+/consultar_rigol
+/build/
+*.o
+*.d
+*.swp
+*.swo
+*.swn
+*~
