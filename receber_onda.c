@@ -5,6 +5,11 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+struct escala_onda {
+  double passo_t, origem_t, referencia_t;
+  double passo_v, origem_v, referencia_v;
+};
+
 static int enviar_tudo(int conexao, const char *texto, size_t total)
 {
   size_t enviados = 0;
@@ -44,7 +49,43 @@ static int ler_exatamente(int conexao, void *destino, size_t total)
   return 0;
 }
 
-static int ler_bloco(int conexao)
+static int ler_escala(int conexao, struct escala_onda *escala)
+{
+  char resposta[256];
+  size_t usados = 0;
+
+  for (;;) {
+    unsigned char c;
+    if (ler_exatamente(conexao, &c, 1) < 0)
+      return -1;
+    if (c == '\n')
+      break;
+    if (usados == sizeof resposta -1) {
+      fprintf(stderr, "Preambulo maior que o limite.\n");
+      return -1;
+    }
+    resposta[usados++] = (char)c;
+  }
+  resposta[usados] = '\0';
+
+  unsigned formato, modo, pontos, medias;
+  int campos = sscanf(resposta,
+      "%u,%u,%u,%u,%lf,%lf,%lf,%lf,%lf,%lf",
+      &formato, &modo, &pontos, &medias,
+      &escala->passo_t, &escala->origem_t, &escala->referencia_t,
+      &escala->passo_v, &escala->origem_v, &escala->referencia_v);
+
+  if (campos != 10 || formato != 1 || modo != 0 ||
+      pontos != 1000 || !(escala->passo_t > 0) ||
+      !(escala->passo_v > 0)) {
+    fprintf(stderr, "Preambulo incompativel: %s\n", resposta);
+    return -1;
+  }
+  printf("Preambulo: %s\n", resposta);
+  return 0;
+}
+
+static int ler_bloco(int conexao, const struct escala_onda *escala)
 {
   unsigned char prefixo[2];
   if (ler_exatamente(conexao, prefixo, sizeof prefixo) < 0)
@@ -92,11 +133,16 @@ static int ler_bloco(int conexao)
   for (size_t i = 0; i < 16; i++)
     printf(" %02X", (unsigned)dados[i]);
   putchar('\n');
-  puts("Primeiros 8 pontos (valor digital):");
+  puts("Primeiros 8 pontos convertidos");
   for (size_t i = 0; i < 8; i++) {
     unsigned ponto = (unsigned)dados[2 * i] |
                      ((unsigned)dados[2 * i + 1] << 8);
-    printf("%zu: %u\n", i, ponto);
+    double tempo = ((double)i - escala->referencia_t) *
+                   escala->passo_t + escala->origem_t;
+    double tensao = ((double)ponto - escala->origem_v -
+                    escala->referencia_v) * escala->passo_v;
+    printf("%zu: digital=%u; tempo=%.9g s; tensao=%.9g V\n",
+           i, ponto, tempo, tensao);
   }
   return 0;
 }
@@ -157,7 +203,20 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  int resultado = ler_bloco(conexao);
+  struct escala_onda escala;
+  if (ler_escala(conexao, &escala) < 0) {
+    close(conexao);
+    return EXIT_FAILURE;
+  }
+
+  const char consulta_dados[] = ":WAV:DATA?\n";
+  if (enviar_tudo(conexao, consulta_dados,
+                  sizeof consulta_dados - 1) < 0) {
+    close(conexao);
+    return EXIT_FAILURE;
+  }
+
+  int resultado = ler_bloco(conexao, &escala);
   close(conexao);
   if (resultado < 0)
     return EXIT_FAILURE;
