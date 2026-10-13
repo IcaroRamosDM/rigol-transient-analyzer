@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 struct escala_onda {
+  size_t pontos;
   double passo_t, origem_t, referencia_t;
   double passo_v, origem_v, referencia_v;
 };
@@ -75,12 +76,15 @@ static int ler_escala(int conexao, struct escala_onda *escala)
       &escala->passo_t, &escala->origem_t, &escala->referencia_t,
       &escala->passo_v, &escala->origem_v, &escala->referencia_v);
 
-  if (campos != 10 || formato != 1 || modo != 0 ||
-      pontos != 1000 || !(escala->passo_t > 0) ||
-      !(escala->passo_v > 0)) {
+  if (campos != 10 || formato != 1 ||
+      (modo != 0 && modo != 2) ||
+      pontos < 8 || pontos > 1000000 ||
+      !(escala->passo_t > 0) || !(escala->passo_v > 0)) {
     fprintf(stderr, "Preambulo incompativel: %s\n", resposta);
     return -1;
   }
+  escala->pontos = pontos;
+
   printf("Preambulo: %s\n", resposta);
   return 0;
 }
@@ -110,23 +114,33 @@ static int ler_bloco(int conexao, const struct escala_onda *escala)
     tamanho = tamanho * 10 + (size_t)(numero[i] - '0');
   }
 
-  unsigned char dados[2000];
-  if (tamanho != sizeof dados) {
-    fprintf(stderr, "Esperados 2000 bytes; recebidos no cabecalho: %zu.\n",
-            tamanho);
+  size_t esperado = escala->pontos * 2;
+  if (tamanho != esperado) {
+    fprintf(stderr, "Esperados %zu bytes; recebidos no cabecalho: %zu.\n",
+            esperado, tamanho);
     return -1;
   }
-  if (ler_exatamente(conexao, dados, tamanho) < 0)
+
+  unsigned char *dados = malloc(tamanho);
+  if (dados == NULL) {
+    fprintf(stderr, "Sem memoria para o bloco.\n");
     return -1;
+  }
+  if (ler_exatamente(conexao, dados, tamanho) < 0) {
+    free(dados);
+    return -1;
+  }
 
   unsigned char fim;
-  if (ler_exatamente(conexao, &fim, 1) < 0)
-    return -1;
-  if (fim != '\n') {
-    fprintf(stderr, "Terminador do bloco invalido.\n");
+  if (ler_exatamente(conexao, &fim, 1) < 0) {
+    free(dados);
     return -1;
   }
-
+  if (fim != '\n') {
+    fprintf(stderr, "Terminador do bloco invalido.\n");
+    free(dados);
+    return -1;
+  }
   printf("Recebidos %zu bytes (%zu pontos de 16 bits).\n",
          tamanho, tamanho / 2);
   printf("Primeiros 16 bytes:");
@@ -144,6 +158,7 @@ static int ler_bloco(int conexao, const struct escala_onda *escala)
     printf("%zu: digital=%u; tempo=%.9g s; tensao=%.9g V\n",
            i, ponto, tempo, tensao);
   }
+  free(dados);
   return 0;
 }
 
