@@ -126,6 +126,40 @@ static void resumir_onda(const unsigned char *dados,
   printf("Pico a pico=%.9g V\n", maximo - minimo);
 }
 
+static void localizar_bordas(const unsigned char *dados,
+                             const struct escala_onda *escala,
+                             double baixo, double alto)
+{
+  int estado = -1;
+  size_t bordas = 0;
+
+  printf("Limiares: baixo=%.9g V; alto=%.9g V\n", baixo, alto);
+  for (size_t i = 0; i < escala->pontos; i++) {
+    unsigned ponto = (unsigned)dados[2 * i] |
+                     ((unsigned)dados[2 * i + 1] << 8);
+    double tensao = ((double)ponto - escala->origem_v -
+                    escala->referencia_v) * escala->passo_v;
+
+    int novo_estado = estado;
+    if (tensao >= alto)
+      novo_estado = 1;
+    else if (tensao <= baixo)
+      novo_estado = 0;
+
+    if (estado != -1 && novo_estado != estado) {
+      bordas++;
+      double tempo = ((double)i - escala->referencia_t) *
+                     escala->passo_t + escala->origem_t;
+      if (bordas <= 20)
+        printf("%s: t=%.9g s; ponto=%zu\n",
+               novo_estado == 1 ? "Subida" : "Descida", tempo, i);
+    }
+    estado = novo_estado;
+  }
+  printf("Total de bordas: %zu\n", bordas);
+  if (bordas > 20)
+    puts("Exibidas apenas as primeiras 20 bordas.");
+}
 static int ler_bloco(int conexao, const struct escala_onda *escala)
 {
   unsigned char prefixo[2];
@@ -197,6 +231,7 @@ static int ler_bloco(int conexao, const struct escala_onda *escala)
   }
 
   resumir_onda(dados, escala);
+  localizar_bordas(dados, escala, 0.05, 0.15);
   free(dados);
   return 0;
 }
