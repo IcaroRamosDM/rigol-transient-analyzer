@@ -5,6 +5,25 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+static int enviar_tudo(int conexao, const char *texto, size_t total)
+{
+  size_t enviados = 0;
+  while (enviados < total) {
+    ssize_t n = send(conexao, texto + enviados, total - enviados,
+                     MSG_NOSIGNAL);
+    if (n < 0) {
+      perror("Falha ao enviar");
+      return -1;
+    }
+    if (n == 0) {
+      fprintf(stderr, "Envio sem progresso.\n");
+      return -1;
+    }
+    enviados += (size_t)n;
+  }
+  return 0;
+}
+
 static int ler_exatamente(int conexao, void *destino, size_t total)
 {
   unsigned char *bytes = destino;
@@ -132,26 +151,10 @@ int main(int argc, char *argv[])
     close(conexao);
     return EXIT_FAILURE;
   }
-
-  size_t comprimento = (size_t)tamanho;
-  size_t enviados = 0;
-
-  // send pode transmitir somente parte dos bytes solicitados.
-  while (enviados < comprimento) {
-    ssize_t quantidade = send(conexao, comando + enviados,
-                              comprimento - enviados,
-                              MSG_NOSIGNAL);
-    if (quantidade < 0) {
-      perror("Falha ao enviar");
-      close(conexao);
-      return EXIT_FAILURE;
-    }
-    if (quantidade == 0) {
-      fprintf(stderr, "Envio sem progresso.\n");
-      close(conexao);
-      return EXIT_FAILURE;
-    }
-    enviados += (size_t)quantidade;
+  
+  if (enviar_tudo(conexao, comando, (size_t)tamanho) < 0) {
+    close(conexao);
+    return EXIT_FAILURE;
   }
 
   int resultado = ler_bloco(conexao);
