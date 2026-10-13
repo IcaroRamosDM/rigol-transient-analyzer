@@ -73,6 +73,12 @@ static int ler_bloco(int conexao)
   for (size_t i = 0; i < 16; i++)
     printf(" %02X", (unsigned)dados[i]);
   putchar('\n');
+  puts("Primeiros 8 pontos (valor digital):");
+  for (size_t i = 0; i < 8; i++) {
+    unsigned ponto = (unsigned)dados[2 * i] |
+                     ((unsigned)dados[2 * i + 1] << 8);
+    printf("%zu: %u\n", i, ponto);
+  }
   return 0;
 }
 
