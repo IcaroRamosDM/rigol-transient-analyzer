@@ -89,6 +89,43 @@ static int ler_escala(int conexao, struct escala_onda *escala)
   return 0;
 }
 
+static void resumir_onda(const unsigned char *dados,
+                        const struct escala_onda *escala)
+{
+  double minimo = 0, maximo = 0, soma = 0;
+  size_t indice_minimo = 0, indice_maximo = 0;
+
+  for (size_t i = 0; i < escala->pontos; i++) {
+    unsigned ponto = (unsigned)dados[2 * i] |
+                     ((unsigned)dados[2 * i + 1] << 8);
+    double tensao = ((double)ponto - escala->origem_v -
+                    escala->referencia_v) * escala->passo_v;
+
+    if (i == 0 || tensao < minimo) {
+      minimo = tensao;
+      indice_minimo = i;
+    }
+    if (i == 0 || tensao > maximo) {
+      maximo = tensao;
+      indice_maximo = i;
+    }
+    soma += tensao;
+  }
+
+  double tempo_minimo = ((double)indice_minimo - escala->referencia_t) *
+                        escala->passo_t + escala->origem_t;
+  double tempo_maximo = ((double)indice_maximo - escala->referencia_t) *
+                        escala->passo_t + escala->origem_t;
+
+  printf("Resumo de %zu pontos:\n", escala->pontos);
+  printf("Minimo=%.9g V em t=%.9g s (ponto %zu)\n",
+      minimo, tempo_minimo, indice_minimo);
+  printf("Maximo=%.9g V em t=%.9g s (ponto%zu)\n",
+      maximo, tempo_maximo, indice_maximo);
+  printf("Media=%.9g V\n", soma / (double)escala->pontos);
+  printf("Pico a pico=%.9g V\n", maximo - minimo);
+}
+
 static int ler_bloco(int conexao, const struct escala_onda *escala)
 {
   unsigned char prefixo[2];
@@ -158,6 +195,8 @@ static int ler_bloco(int conexao, const struct escala_onda *escala)
     printf("%zu: digital=%u; tempo=%.9g s; tensao=%.9g V\n",
            i, ponto, tempo, tensao);
   }
+
+  resumir_onda(dados, escala);
   free(dados);
   return 0;
 }
