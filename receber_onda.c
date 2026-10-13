@@ -11,6 +11,11 @@ struct escala_onda {
   double passo_v, origem_v, referencia_v;
 };
 
+struct onda {
+  struct escala_onda escala;
+  unsigned char *dados;
+};
+
 static int enviar_tudo(int conexao, const char *texto, size_t total)
 {
   size_t enviados = 0;
@@ -160,7 +165,8 @@ static void localizar_bordas(const unsigned char *dados,
   if (bordas > 20)
     puts("Exibidas apenas as primeiras 20 bordas.");
 }
-static int ler_bloco(int conexao, const struct escala_onda *escala)
+static int ler_bloco(int conexao, const struct escala_onda *escala,
+                     unsigned char **saida)
 {
   unsigned char prefixo[2];
   if (ler_exatamente(conexao, prefixo, sizeof prefixo) < 0)
@@ -212,34 +218,42 @@ static int ler_bloco(int conexao, const struct escala_onda *escala)
     free(dados);
     return -1;
   }
+
   printf("Recebidos %zu bytes (%zu pontos de 16 bits).\n",
          tamanho, tamanho / 2);
-  printf("Primeiros 16 bytes:");
-  for (size_t i = 0; i < 16; i++)
-    printf(" %02X", (unsigned)dados[i]);
-  putchar('\n');
-  puts("Primeiros 8 pontos convertidos");
-  for (size_t i = 0; i < 8; i++) {
-    unsigned ponto = (unsigned)dados[2 * i] |
-                     ((unsigned)dados[2 * i + 1] << 8);
-    double tempo = ((double)i - escala->referencia_t) *
-                   escala->passo_t + escala->origem_t;
-    double tensao = ((double)ponto - escala->origem_v -
-                    escala->referencia_v) * escala->passo_v;
-    printf("%zu: digital=%u; tempo=%.9g s; tensao=%.9g V\n",
-           i, ponto, tempo, tensao);
+  *saida = dados;
+  return 0;
+}
+
+static int receber_canal(int conexao, const char *canal,
+                         struct onda *onda)
+{
+  char comando[160];
+  int tamanho = snprintf(comando, sizeof comando,
+      ":WAV:SOUR %s;:WAV:MODE RAW;:WAV:FORM WORD;"
+      ":WAV:STAR 1;:WAV:STOP 1000000;:WAV:PRE?\n", canal);
+  if (tamanho < 0 || (size_t)tamanho >= sizeof comando) {
+    fprintf(stderr, "Comando maior que o limite.\n");
+    return -1;
   }
 
-  resumir_onda(dados, escala);
-  localizar_bordas(dados, escala, 0.05, 0.15);
-  free(dados);
-  return 0;
+  printf("\nLendo %s\n", canal);
+  if (enviar_tudo(conexao, comando, (size_t)tamanho) < 0 ||
+      ler_escala(conexao, &onda->escala) < 0)
+    return -1;
+
+  const char consulta_dados[] = ":WAV:DATA?\n";
+  if (enviar_tudo(conexao, consulta_dados,
+                  sizeof consulta_dados - 1) < 0)
+    return -1;
+
+  return ler_bloco(conexao, &onda->escala, &onda->dados);
 }
 
 int main(int argc, char *argv[])
 {
-  if (argc != 3) {
-    fprintf(stderr, "Uso: %s ENDERECO_IP CONSULTA\n", argv[0]);
+  if (argc != 2) {
+    fprintf(stderr, "Uso: %s ENDERECO_IP\n", argv[0]);
     return EXIT_FAILURE;
   }
 
@@ -278,35 +292,35 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  char comando[256];
-  int tamanho = snprintf(comando, sizeof comando, "%s\n", argv[2]);
+  struct onda tensao = {0}, corrente = {0};
+  const char parar[] = ":STOP\n";
+  int resultado = enviar_tudo(conexao, parar, sizeof parar - 1);
 
-  if (tamanho < 0 || (size_t)tamanho >= sizeof comando) {
-    fprintf(stderr, "Consulta maior que o limite do programa.\n");
-    close(conexao);
-    return EXIT_FAILURE;
-  }
-  
-  if (enviar_tudo(conexao, comando, (size_t)tamanho) < 0) {
-    close(conexao);
-    return EXIT_FAILURE;
-  }
-
-  struct escala_onda escala;
-  if (ler_escala(conexao, &escala) < 0) {
-    close(conexao);
-    return EXIT_FAILURE;
-  }
-
-  const char consulta_dados[] = ":WAV:DATA?\n";
-  if (enviar_tudo(conexao, consulta_dados,
-                  sizeof consulta_dados - 1) < 0) {
-    close(conexao);
-    return EXIT_FAILURE;
-  }
-
-  int resultado = ler_bloco(conexao, &escala);
+  if (resultado == 0)
+    resultado = receber_canal(conexao, "CHAN1", &tensao);
+  if (resultado == 0)
+    resultado = receber_canal(conexao, "CHAN2", &corrente);
   close(conexao);
+
+  if (resultado == 0 &&
+      (tensao.escala.pontos != corrente.escala.pontos ||
+       tensao.escala.passo_t != corrente.escala.passo_t ||
+       tensao.escala.origem_t != corrente.escala.origem_t ||
+       tensao.escala.referencia_t != corrente.escala.referencia_t)) {
+    fprintf(stderr, "Bases de tempo diferentes entre canais.\n");
+    resultado = -1;
+  }
+
+  if (resultado == 0) {
+    puts("\nCH1: tensao da fonte");
+    resumir_onda(tensao.dados, &tensao.escala);
+    puts("\nCH2: tensao no resistor de medicao");
+    resumir_onda(corrente.dados, &corrente.escala);
+    localizar_bordas(corrente.dados, &corrente.escala, 0.05, 0.15);
+  }
+
+  free(tensao.dados);
+  free(corrente.dados);
   if (resultado < 0)
     return EXIT_FAILURE;
   return EXIT_SUCCESS;
