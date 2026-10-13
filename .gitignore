@@ -7,3 +7,7 @@
 *.swo
 *.swn
 *~
+/resultados/
+/.venv/
+__pycache__/
+*.pyc
