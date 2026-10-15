@@ -85,6 +85,9 @@ def desenhar(pasta, limite):
                 if e["acomodado"] == "1":
                     axes[0, coluna].axvline(float(e["acomodacao_s"]) * 1e6,
                                             color="#439946", linestyle="--", linewidth=0.9)
+            if coluna == 1:
+                for ax in axes[:, coluna]:
+                    ax.set_xlim(-5, 5)
         axes[0, 0].set_ylabel("Tensão (volts)")
         axes[1, 0].set_ylabel("Corrente comutada (miliamperes)")
         axes[0, 0].set_title("Janela de análise")
