@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import logging
 import os
 import re
 import secrets
@@ -184,13 +185,18 @@ class App(Workbench):
                 if mode=="reanalysis" and code in (0,2):
                     with (self.results/run/"proveniencia.json").open("x",encoding="utf-8") as file:
                         json.dump(provenance,file,ensure_ascii=False,allow_nan=False)
-        except (OSError, ValueError, Problem) as exc:
-            error = str(exc)
+        except Exception as exc:
+            code = -1
+            logging.exception("Acquisition job failed: %s", run)
+            error = str(exc) or type(exc).__name__
         finally:
             if process and process.poll() is None:
                 self._signal(process, KILL)
                 process.wait()
-            cancel_file.unlink(missing_ok=True)
+            try:
+                cancel_file.unlink(missing_ok=True)
+            except OSError:
+                logging.exception("Could not remove cancellation marker for %s", run)
             with self.lock:
                 cancelled = self.job["cancel_requested"]
             stop_warning = ""
@@ -205,8 +211,16 @@ class App(Workbench):
                 complete = read_json(self.results / run / "execucao.json").get("concluido") is True
             except (OSError, ValueError, AttributeError):
                 pass
+            failed = not cancelled and not (code in (0, 2) and complete)
+            connection_check = None
+            if failed and mode == "real":
+                with self.lock:
+                    self.job.update(phase="verificando_conexao",
+                                    message="Verificando a comunicação com o Rigol")
+                connection_check = self._check_connection(cfg)
             with self.lock:
                 self.process = None
+                cancelled = self.job["cancel_requested"]
                 if mode == "real":
                     self.scope["snapshot"] = None
                 if cancelled:
@@ -217,15 +231,36 @@ class App(Workbench):
                     self.job.update(state="done" if code == 0 else "attention", message=message)
                 else:
                     self.job.update(state="error", message=error or "O ensaio não foi concluído. Consulte os detalhes.")
-                    # Clipping invalidates this capture, not the verified instrument identity.
-                    clipped = re.fullmatch(
-                        r"CH([12]) saturou no ponto (\d+); confira escala, offset e conexoes\.", error)
-                    if mode == "real" and clipped:
-                        self.job["failure"] = dict(kind="clipping",
-                                                  channel=int(clipped[1]), point=int(clipped[2]))
-                    elif mode == "real":
-                        self.connection["connected"] = False
+                    if mode == "real":
+                        clipped = re.fullmatch(
+                            r"CH([12]) saturou no ponto (\d+); confira escala, offset e conexoes\.", error)
+                        if clipped:
+                            self.job["failure"] = dict(kind="clipping",
+                                                      channel=int(clipped[1]), point=int(clipped[2]))
+                        elif error in {"Nenhum disparo concluido dentro do prazo.",
+                                       "Rigol nao iniciou a aquisicao."}:
+                            self.job["failure"] = dict(kind="trigger_timeout")
+                        else:
+                            self.job["failure"] = dict(kind="capture")
+                        connected, connection_error = connection_check
+                        self.connection.update(connected=connected, error=connection_error)
+                        if connected:
+                            self.connection["checked_at"] = now()
                 self.job.update(finished_at=now(), exit_code=code)
+
+    def _check_connection(self, cfg):
+        """Capture validity and instrument communication are independent."""
+        try:
+            identity = identify(scope_query(cfg["ip"], cfg["port"], timeout=2), cfg["model"])
+            expected = self.connection
+            if any(identity[key] != expected.get(key) for key in ("model", "serial", "firmware")):
+                return False, "A identidade do instrumento mudou. Conecte e identifique o Rigol novamente."
+            return True, ""
+        except (OSError, Problem, ValueError):
+            return False, "Não foi possível confirmar a comunicação com o Rigol. Confira alimentação, cabo Ethernet e IP."
+        except Exception:
+            logging.exception("Instrument verification failed")
+            return False, "Não foi possível verificar a conexão. Tente conectar novamente."
 
     @staticmethod
     def _signal(process, number):

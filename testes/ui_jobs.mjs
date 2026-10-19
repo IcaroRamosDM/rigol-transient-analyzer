@@ -74,6 +74,19 @@ assert.equal(element("jobReview").hidden,false);
 assert.match(element("jobRecovery").textContent,/CH1:.*tentar novamente/);
 assert.equal(S.run.id,"older-valid-capture", "Failed capture must not replace valid results");
 
+response.job = {...failed,id:"no-trigger",message:"Nenhum disparo concluido dentro do prazo.",
+  failure:{kind:"trigger_timeout"}};
+await poll();
+assert.equal(element("start").disabled,false,"A missing trigger must not disconnect a responding Rigol");
+assert.equal(element("jobReview").hidden,false);
+assert.equal(element("jobReview").disabled,false);
+assert.match(element("jobRecovery").textContent,/gerador.*CH2/);
+assert.equal(element("jobSpinner").hidden,true);
+response.job = {...failed,id:"protocol-error",failure:{kind:"capture"}};
+await poll();
+assert.equal(element("start").disabled,false);
+assert.match(element("jobRecovery").textContent,/continua respondendo/);
+
 historyError = true;
 response.job = {...failed,id:"failed-again",failure:{kind:"clipping",channel:2,point:17}};
 await poll();
@@ -87,6 +100,7 @@ historyError = false;
 response.job = {...failed,id:"retry",state:"running",failure:null};
 await poll();
 assert.equal(element("start").disabled,true);
+assert.equal(element("jobReview").disabled,true);
 assert.equal(element("cancel").hidden,false);
 assert.equal(element("jobSpinner").hidden,false);
 assert.equal(element("jobRecovery").hidden,true);
@@ -113,7 +127,9 @@ await poll();
 assert.equal(element("start").disabled,true);
 assert.equal(element("connect").disabled,false);
 assert.equal(element("shutdown").disabled,false);
-assert.equal(element("jobReview").hidden,true);
+assert.equal(element("jobReview").hidden,false);
+assert.equal(element("jobReview").textContent,"Reconectar ao Rigol");
+assert.match(element("jobRecovery").textContent,/Ethernet/);
 assert.equal(element("progressPanel").hidden,false);
 assert.ok(historyCalls >= 3);
 S.closed = true;

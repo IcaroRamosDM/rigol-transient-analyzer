@@ -1,5 +1,5 @@
 import { t } from "./i18n.js";
-import { $, S, active, controls, api, say } from "./core.js";
+import { $, S, active, controls, api, say, currentConnection } from "./core.js";
 import { openRun, refreshHistory } from "./results.js";
 
 export function renderJob() {
@@ -7,12 +7,22 @@ export function renderJob() {
   const failed = job?.state === "error";
   $("progressPanel").hidden = !job || (!active() && !failed && S.run && S.run.id !== job.id);
   $("progressPanel").classList.toggle("failed", failed);
-  const clipping = failed && job.failure?.kind === "clipping";
+  const realFailure = failed && job.mode === "real";
+  const disconnected = realFailure && !currentConnection();
+  const clipping = job?.failure?.kind === "clipping";
+  const triggerTimeout = job?.failure?.kind === "trigger_timeout";
   $("jobRecovery").hidden = !failed;
-  $("jobReview").hidden = !clipping;
-  $("jobRecovery").textContent = clipping ?
-    "CH" + job.failure.channel + ": " + t("Confira a ponta, o terra, a escala e a posição vertical. Depois, clique em Iniciar medição real para tentar novamente.") :
-    t("A captura foi interrompida. Consulte os detalhes e confira a conexão antes de tentar novamente.");
+  $("jobReview").hidden = !realFailure;
+  $("jobReview").textContent = t(disconnected ? "Reconectar ao Rigol" : "Conferir ajustes do Rigol");
+  $("jobRecovery").textContent = disconnected ?
+    t("Não foi possível confirmar a comunicação. Confira alimentação, cabo Ethernet e IP e clique em Reconectar ao Rigol.") :
+    realFailure && triggerTimeout ?
+      t("O disparo não foi concluído. Confira o gerador, a ponta e o terra do CH2. Depois, clique em Iniciar medição real para tentar novamente.") :
+    realFailure && clipping ?
+      "CH" + job.failure.channel + ": " + t("Confira a ponta, o terra, a escala e a posição vertical. Depois, clique em Iniciar medição real para tentar novamente.") :
+    realFailure ?
+      t("A captura falhou, mas o Rigol continua respondendo. Confira os detalhes e os ajustes antes de iniciar outra medição.") :
+      t("A operação falhou. Consulte os detalhes antes de tentar novamente.");
   if (!job) return;
   $("jobMessage").textContent = t(job.message);
   $("jobCapture").textContent = failed ?

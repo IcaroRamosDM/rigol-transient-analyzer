@@ -38,11 +38,13 @@ Matplotlib generates optional PNG plots. The interface and PDF reports support P
 raw core logs, exported field names, and legacy PNG labels retain Portuguese;
 this guide explains their meaning.
 
-A clipped channel stops the current capture with an error. The interface keeps
-the instrument identified and enables another measurement after the probe,
-ground, vertical scale, and offset have been checked. The failure panel stays
-visible when an earlier plot is open and labels that plot as an earlier run.
-Communication or protocol errors require identifying the instrument again.
+Capture errors, including missing triggers, clipping and invalid waveform data,
+stop the current capture. The application then checks instrument identity.
+If the same Rigol responds, the interface keeps the measurement and settings
+controls available. It requests reconnection only when communication or identity
+cannot be confirmed, with a direct reconnect button in the failure panel.
+The panel identifies plots from earlier runs and gives recovery instructions.
+For a missing trigger, check the generator, CH2 probe and ground before retrying.
 
 ## Instrument compatibility
 
@@ -142,7 +144,7 @@ provided with the release. To calculate a downloaded installer's checksum
 in PowerShell, replace the filename with the version you downloaded:
 
 ```powershell
-Get-FileHash .\RigolTransientAnalyzer-0.2.1-windows-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\RigolTransientAnalyzer-0.2.2-windows-x64-setup.exe -Algorithm SHA256
 ```
 
 Compare the value with the release checksum file. Physical model-validation
@@ -759,7 +761,7 @@ Run it on a Windows account without an existing installed copy, using a
 new empty test directory:
 
 ```powershell
-.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.2.1-windows-x64-setup.exe --work dist\windows\smoke-test
+.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.2.2-windows-x64-setup.exe --work dist\windows\smoke-test
 ```
 
 Instrument references:

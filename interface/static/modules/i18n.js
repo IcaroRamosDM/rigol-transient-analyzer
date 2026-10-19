@@ -2,6 +2,15 @@
 export const language=(()=>{try{return localStorage.getItem("rta.language")==="en"?"en":"pt";}catch(_){return "pt";}})();
 export const locale=language==="en"?"en-US":"pt-BR";
 export const english={
+  "Reconectar ao Rigol": "Reconnect to Rigol",
+  "Não foi possível confirmar a comunicação. Confira alimentação, cabo Ethernet e IP e clique em Reconectar ao Rigol.": "Communication could not be confirmed. Check power, Ethernet cable and IP, then click Reconnect to Rigol.",
+  "O disparo não foi concluído. Confira o gerador, a ponta e o terra do CH2. Depois, clique em Iniciar medição real para tentar novamente.": "The trigger did not complete. Check the generator, CH2 probe and ground. Then click Start real measurement to retry.",
+  "A captura falhou, mas o Rigol continua respondendo. Confira os detalhes e os ajustes antes de iniciar outra medição.": "The capture failed, but the Rigol is still responding. Review the details and settings before starting another measurement.",
+  "A operação falhou. Consulte os detalhes antes de tentar novamente.": "The operation failed. Read the details before retrying.",
+  "Verificando a comunicação com o Rigol": "Checking communication with the Rigol",
+  "Nenhum disparo concluido dentro do prazo.": "No trigger completed within the timeout.",
+  "Rigol nao iniciou a aquisicao.": "The Rigol did not start acquisition.",
+
   "O gráfico exibido pertence a um ensaio anterior.": "The displayed plot belongs to an earlier run.",
   "Conferir ajustes do Rigol": "Review Rigol settings",
   "Confira a ponta, o terra, a escala e a posição vertical. Depois, clique em Iniciar medição real para tentar novamente.": "Check the probe, ground, scale and vertical position. Then click Start real measurement to retry.",

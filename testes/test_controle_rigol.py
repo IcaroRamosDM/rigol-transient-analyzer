@@ -115,14 +115,58 @@ class RigolControls(harness.InterfaceHarness, unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertTrue(json.loads(body)["closed"])
 
-    def test_protocol_failure_still_requires_reconnection(self):
-        self.instrument.falha = "base"
-        self.app.start(dict(mode="real", settings=self.cfg | dict(points=1000, timeout=1)))
-        job = self.wait()
-        self.assertEqual(job["state"], "error", job)
-        self.assertIsNone(job["failure"])
+    def test_capture_failures_keep_a_responsive_instrument_available(self):
+        for fault in ("sem_disparo", "base", "preambulo", "comprimento", "truncado"):
+            with self.subTest(fault=fault):
+                self.instrument.falha = fault
+                cfg = self.cfg | dict(points=1000, timeout=.5)
+                self.app.start(dict(mode="real", settings=cfg))
+                job = self.wait()
+                self.assertEqual(job["state"], "error", job)
+                self.assertEqual(job["failure"]["kind"], "trigger_timeout" if fault == "sem_disparo" else "capture")
+                self.assertTrue(self.app.snapshot()["connection"]["connected"], job)
+                self.assertFalse(self.app.snapshot()["scope"]["busy"])
+                self.assertIsNone(self.app.process)
+                self.instrument.falha = None
+                self.app.start(dict(mode="real", settings=cfg))
+                retried = self.wait()
+                self.assertEqual(retried["state"], "done", retried)
+
+    def test_connection_is_lost_only_when_identity_check_fails(self):
+        cfg = self.cfg | dict(points=1000, timeout=.5)
+        for check_error in (TimeoutError("offline"), ValueError("bad identity")):
+            with self.subTest(error=type(check_error).__name__):
+                self.instrument.falha = "sem_disparo"
+                with mock.patch("interface.rta.service.scope_query", side_effect=check_error):
+                    self.app.start(dict(mode="real", settings=cfg))
+                    failed = self.wait()
+                self.assertEqual(failed["state"], "error")
+                self.assertFalse(self.app.snapshot()["connection"]["connected"])
+                self.assertTrue(self.app.snapshot()["connection"]["error"])
+                self.assertIsNone(self.app.process)
+                self.instrument.falha = None
+                self.app.connect(cfg)
+                self.app.start(dict(mode="real", settings=cfg))
+                retried = self.wait()
+                self.assertEqual(retried["state"], "done", retried)
+
+    def test_different_instrument_is_not_silently_accepted_after_failure(self):
+        cfg = self.cfg | dict(points=1000, timeout=.5)
+        self.instrument.falha = "sem_disparo"
+        with mock.patch("interface.rta.service.scope_query",
+                        return_value="RIGOL TECHNOLOGIES,DHO802,DIFFERENT,SIMULADO"):
+            self.app.start(dict(mode="real", settings=cfg))
+            self.assertEqual(self.wait()["state"], "error")
         self.assertFalse(self.app.snapshot()["connection"]["connected"])
+
+    def test_unexpected_worker_error_releases_the_job(self):
+        with self.assertLogs(level="ERROR"), mock.patch.object(self.app, "_command", side_effect=RuntimeError("fixture worker error")):
+            self.app.start(dict(mode="real", settings=self.cfg | dict(points=1000)))
+            job = self.wait()
+        self.assertEqual(job["state"], "error")
+        self.assertIn("fixture worker error", job["message"])
         self.assertIsNone(self.app.process)
+        self.assertTrue(self.app.snapshot()["connection"]["connected"])
 
     def tearDown(self):
         try:

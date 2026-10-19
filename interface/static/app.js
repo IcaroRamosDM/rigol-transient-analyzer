@@ -2,7 +2,7 @@ import { renderJob, poll } from "./modules/jobs.js";
 import { initWorkbench } from "./modules/workbench.js";
 import { t } from "./modules/i18n.js";
 import { configureTimebase, initTimebase } from "./modules/timebase.js";
-import { $, S, inputs, titles, active, controls, api, say, config, saveConfig, fillConfig } from "./modules/core.js";
+import { $, S, inputs, titles, active, controls, api, say, config, saveConfig, fillConfig, currentConnection } from "./modules/core.js";
 import { draw, selectEvent, setRange, eventRange, zoom } from "./modules/chart.js";
 import { refreshHistory, openRun, selectCapture, renderEvent } from "./modules/results.js";
 import { configureModels, initModels } from "./modules/models.js";
@@ -48,7 +48,7 @@ document.querySelectorAll("[data-view]").forEach(button=>button.addEventListener
 inputs.filter(input=>input.id!=="timeDiv").forEach(input=>input.addEventListener("change",()=>{controls();saveConfig();}));
 $("settingsForm").addEventListener("submit",e=>{e.preventDefault();start("real");});
 $("connect").addEventListener("click",connect);
-$("jobReview").addEventListener("click",()=>showView("rigol"));
+$("jobReview").addEventListener("click",()=>currentConnection() ? showView("rigol") : connect());
 $("demo").addEventListener("click",()=>start("demo"));
 $("emptyDemo").addEventListener("click",()=>start("demo"));
 $("cancel").addEventListener("click",async()=>{try{S.job=await api("/api/cancel",{});renderJob();controls();}catch(e){say(e.message,"error");}});

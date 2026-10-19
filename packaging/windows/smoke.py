@@ -149,6 +149,16 @@ def main():
             api("/api/run",dict(mode="real",settings=cfg))
             assert wait_job()["state"]=="done"
         report["clipping_recovery_without_reconnect"]=True
+        for fault in ("sem_disparo","base","preambulo","comprimento","truncado"):
+            instrument.falha=fault
+            api("/api/run",dict(mode="real",settings=cfg|dict(timeout=.5)))
+            failed=wait_job()
+            assert failed["state"]=="error",failed
+            assert json.loads(api("/api/status"))["connection"]["connected"]
+            instrument.falha=None
+            api("/api/run",dict(mode="real",settings=cfg))
+            assert wait_job()["state"]=="done"
+        report["capture_failure_recovery_without_manual_reconnect"]=True
         instrument.falha="sem_disparo"
         backup=json.loads(api("/api/backup",dict(settings=cfg)))
         instrument.parametros[":CHAN1:SCAL"]="2"
