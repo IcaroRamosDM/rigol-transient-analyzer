@@ -16,5 +16,5 @@ assert.equal(timeStep(198e-6),2e-6);
 assert.equal(normalizeTime(.21/1000),210e-6);
 assert.equal(formatTime(210e-6,"ms"),"0,21 ms");
 assert.equal(adjacentTime(5e-9,-1),5e-9);
-assert.equal(adjacentTime(1000,1),1000);
+assert.equal(adjacentTime(500,1),500);
 console.log("Timebase: boundaries, units, rounding, and limits passed.");

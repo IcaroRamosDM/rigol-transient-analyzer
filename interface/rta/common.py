@@ -5,10 +5,11 @@ import ipaddress
 import json
 import math
 
+from .models import MODELS, selected_model
 from .timebase import valid_time, floor_time, next_time, format_time
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULTS = dict(ip="169.254.112.67", port=5555, probe_v=10, probe_i=1,
+DEFAULTS = dict(model="auto", ip="169.254.112.67", port=5555, probe_v=10, probe_i=1,
                 resistor=1, captures=1, points=1000000, nominal=5,
                 scale_v=.5, scale_i=.1, time_div=.0002, bandwidth="20M",
                 low_a=.05, high_a=.15, window_us=50, guard_us=20,
@@ -53,10 +54,16 @@ def address(data):
         raise Problem("Informe um endereço IP válido e uma porta de 1 a 65535.") from None
 
 
-def settings(data):
+def settings(data, detected=None):
     if not isinstance(data, dict) or set(data) - set(DEFAULTS):
         raise Problem("Configuração desconhecida.")
     cfg = DEFAULTS | data
+    try:
+        selected_model(cfg["model"])
+    except ValueError as error:
+        raise Problem(str(error)) from None
+    profile = MODELS[cfg["model"] if cfg["model"] != "auto" else detected if detected in MODELS else "DHO802"]
+    grid = profile["timebase"]
     cfg["ip"], cfg["port"] = address(cfg)
     integers = {"captures": (1, 100), "points": (1000, 1000000),
                 "probe_v": (1, 10), "probe_i": (1, 10)}
@@ -71,7 +78,7 @@ def settings(data):
         raise Problem("Selecione uma profundidade de memória disponível.")
     if cfg["probe_v"] not in (1, 10) or cfg["probe_i"] not in (1, 10):
         raise Problem("As pontas devem estar em 1× ou 10×.")
-    numeric = set(DEFAULTS) - set(integers) - {"ip", "port", "bandwidth", "plots"}
+    numeric = set(DEFAULTS) - set(integers) - {"ip", "port", "bandwidth", "plots", "model"}
     for key in numeric:
         value = cfg[key]
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value):
@@ -90,12 +97,13 @@ def settings(data):
     if not .1 <= cfg["timeout"] <= 30:
         raise Problem("Use um prazo de 0,1 a 30 segundos.")
     for key, probe in (("scale_v", "probe_v"), ("scale_i", "probe_i")):
-        if not .0005 * cfg[probe] <= cfg[key] <= 10 * cfg[probe]:
+        if not profile["min_scale"] * cfg[probe] <= cfg[key] <= profile["max_scale"] * cfg[probe]:
             raise Problem("Escala fora da faixa da ponta: " + key)
-    if not 5e-9 <= cfg["time_div"] <= 1000:
-        raise Problem("Tempo por divisão fora da faixa: 5 ns a 1000 s.")
-    if not valid_time(cfg["time_div"]):
+    if not profile["min_time"] <= cfg["time_div"] <= profile["max_time"]:
+        raise Problem("Tempo por divisão fora da faixa do " + profile["model"] + ": " +
+                      format_time(profile["min_time"]) + " a " + format_time(profile["max_time"]) + ".")
+    if not valid_time(cfg["time_div"], grid):
         value = cfg["time_div"]
         raise Problem("Tempo por divisão fora do passo do Rigol. Use " +
-                      format_time(floor_time(value)) + " ou " + format_time(next_time(value)) + ".")
+                      format_time(floor_time(value, grid)) + " ou " + format_time(next_time(value, grid)) + ".")
     return cfg

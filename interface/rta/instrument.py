@@ -1,9 +1,10 @@
-"""Bounded, model-checked DHO802 control with explicit readback."""
+"""Bounded, model-checked DHO800/900 control with explicit readback."""
 import math
 import socket
 import time
 
 from .common import Problem, now
+from .models import identify
 
 
 class Session:
@@ -50,12 +51,12 @@ class Session:
             raise Problem("Valor indisponível: " + command, 502)
         return value
 
-    def identity(self):
+    def identity(self, expected="auto"):
         reply = self.query("*IDN?")
-        fields = reply.split(",")
-        if len(fields) < 4 or "RIGOL" not in fields[0] or fields[1] != "DHO802":
-            raise Problem("Este perfil requer um Rigol DHO802. Resposta: " + reply)
-        return reply
+        try:
+            return identify(reply, expected)
+        except ValueError as error:
+            raise Problem(str(error)) from None
 
 
 def scope_query(ip, port, command="*IDN?", timeout=3):
@@ -63,11 +64,11 @@ def scope_query(ip, port, command="*IDN?", timeout=3):
         return connection.query(command)
 
 
-def read_scope(ip, port, action="read"):
+def read_scope(ip, port, action="read", model="auto", timeout=10):
     if action not in {"read", "run", "stop"}:
         raise Problem("Ação do Rigol desconhecida.")
-    with Session(ip, port) as connection:
-        identity = connection.identity()
+    with Session(ip, port, timeout) as connection:
+        identity = connection.identity(model)
         if action == "run":
             connection.send(":TRIG:SWE AUTO;:RUN")
         elif action == "stop":
@@ -100,7 +101,7 @@ def read_scope(ip, port, action="read"):
             if memory != "AUTO":
                 raise Problem("Profundidade de memória inválida.", 502) from None
             memory_points = None
-        return dict(identity=identity, state=state, channels=channels, checked_at=now(),
+        return dict(**identity, state=state, channels=channels, checked_at=now(),
                     time_div=connection.number(":TIM:MAIN:SCAL?"), memory_points=memory_points,
                     trigger_source=connection.query(":TRIG:EDGE:SOUR?"),
                     trigger_slope=connection.query(":TRIG:EDGE:SLOP?"),

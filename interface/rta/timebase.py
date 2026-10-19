@@ -1,30 +1,35 @@
-"""DHO802 time-base grid; readback verified on firmware 00.01.05."""
+"""DHO800/900 time-base grids; DHO802 readback verified on firmware 00.01.05."""
 import math
 
 PS_PER_SECOND = 10**12
-coarse = sorted({factor * 10**power for power in range(3, 16) for factor in (1, 2, 5)
-                 if 5000 <= factor * 10**power <= 10**15})
-TIMEBASE = dict(min_ps=coarse[0], max_ps=coarse[-1],
-                bands=[dict(start_ps=a, end_ps=b, step_ps=b//100)
+def build_timebase(min_seconds, max_seconds):
+    minimum, maximum = round(min_seconds * PS_PER_SECOND), round(max_seconds * PS_PER_SECOND)
+    coarse = sorted({factor * 10**power for power in range(3, 16) for factor in (1, 2, 5)
+                     if minimum <= factor * 10**power <= maximum})
+    return dict(min_ps=minimum, max_ps=maximum,
+                bands=[dict(start_ps=a, end_ps=b, step_ps=max(100, b//100))
                        for a, b in zip(coarse, coarse[1:])])
 
 
-def band_for(ps):
-    return next((b for b in TIMEBASE["bands"] if ps < b["end_ps"]), TIMEBASE["bands"][-1])
+TIMEBASE = build_timebase(5e-9, 500)
 
 
-def floor_time(seconds):
-    ps = max(TIMEBASE["min_ps"], min(TIMEBASE["max_ps"], round(seconds * PS_PER_SECOND)))
-    band = band_for(ps)
+def band_for(ps, grid=TIMEBASE):
+    return next((b for b in grid["bands"] if ps < b["end_ps"]), grid["bands"][-1])
+
+
+def floor_time(seconds, grid=TIMEBASE):
+    ps = max(grid["min_ps"], min(grid["max_ps"], round(seconds * PS_PER_SECOND)))
+    band = band_for(ps, grid)
     return (band["start_ps"] + (ps-band["start_ps"])//band["step_ps"]*band["step_ps"]) / PS_PER_SECOND
 
 
-def next_time(seconds):
-    floor = floor_time(seconds)
-    if floor >= TIMEBASE["max_ps"] / PS_PER_SECOND:
+def next_time(seconds, grid=TIMEBASE):
+    floor = floor_time(seconds, grid)
+    if floor >= grid["max_ps"] / PS_PER_SECOND:
         return floor
     ps = round(floor * PS_PER_SECOND)
-    return (ps + band_for(ps)["step_ps"]) / PS_PER_SECOND
+    return (ps + band_for(ps, grid)["step_ps"]) / PS_PER_SECOND
 
 
 def format_time(seconds):
@@ -33,7 +38,7 @@ def format_time(seconds):
             return f"{seconds * factor:.12g} {label}"
 
 
-def valid_time(seconds):
+def valid_time(seconds, grid=TIMEBASE):
     return (math.isfinite(seconds) and
-            TIMEBASE["min_ps"] <= seconds * PS_PER_SECOND <= TIMEBASE["max_ps"] and
-            math.isclose(seconds, floor_time(seconds), rel_tol=1e-12, abs_tol=1e-20))
+            grid["min_ps"] <= seconds * PS_PER_SECOND <= grid["max_ps"] and
+            math.isclose(seconds, floor_time(seconds, grid), rel_tol=1e-12, abs_tol=1e-20))

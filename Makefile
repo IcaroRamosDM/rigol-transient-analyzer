@@ -2,7 +2,7 @@ CC ?= gcc
 CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Iinclude
 CFLAGS ?= -std=c17 -O2 -g -Wall -Wextra -Wpedantic -Werror
 LDLIBS += -lm
-FONTES = src/main.c src/comum.c src/analise.c src/rigol.c src/arquivos.c
+FONTES = src/main.c src/comum.c src/analise.c src/rigol.c src/modelos.c src/arquivos.c
 OBJETOS = $(FONTES:src/%.c=build/%.o)
 DEPS = $(OBJETOS:.o=.d)
 PYTHON ?= python3

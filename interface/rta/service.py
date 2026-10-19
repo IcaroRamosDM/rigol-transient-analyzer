@@ -15,6 +15,7 @@ from .common import ROOT, ACTIVE, PHASES, Problem, address, settings, now, read_
 from .instrument import scope_query, read_scope, verify_profile
 from .storage import ResultStore
 from .commands import build_command
+from .models import MODELS, identify, selected_model
 
 class App:
     def __init__(self, root=ROOT, results=None, executable=None):
@@ -37,6 +38,10 @@ class App:
 
     def connect(self, data):
         ip, port = address(data)
+        try:
+            model = selected_model(data.get("model", "auto"))
+        except ValueError as error:
+            raise Problem(str(error)) from None
         with self.lock:
             if self.closed or self.scope["busy"] or self.connection.get("checking") or (
                     self.job and self.job["state"] in ACTIVE):
@@ -44,12 +49,12 @@ class App:
             self.connection = dict(connected=False, checking=True, ip=ip, port=port)
         try:
             identity = scope_query(ip, port)
-            fields = [part.strip() for part in identity.split(",")]
-            if len(fields) < 4 or "RIGOL" not in fields[0].upper() or fields[1] != "DHO802":
-                raise Problem("Este perfil requer um Rigol DHO802. Resposta: " + identity)
+            try:
+                device = identify(identity, model)
+            except ValueError as error:
+                raise Problem(str(error)) from None
             connection = dict(connected=True, checking=False, ip=ip, port=port,
-                              identity=identity, model=fields[1], serial=fields[2],
-                              firmware=fields[3], checked_at=now())
+                              **device, checked_at=now())
         except (OSError, Problem) as error:
             with self.lock:
                 self.connection = dict(connected=False, checking=False, ip=ip,
@@ -65,7 +70,7 @@ class App:
         mode = payload.get("mode")
         if mode not in ("real", "demo"):
             raise Problem("Selecione medição real ou demonstração.")
-        cfg = settings(payload.get("settings", {}))
+        cfg = settings(payload.get("settings", {}), self.connection.get("model"))
         # The demonstration is explicitly advertised as a quick 10k-sample run.
         if mode == "demo":
             cfg["points"] = 10000
@@ -76,8 +81,12 @@ class App:
             if mode == "real" and not (
                     self.connection.get("connected") and
                     self.connection.get("ip") == cfg["ip"] and
-                    self.connection.get("port") == cfg["port"]):
+                    self.connection.get("port") == cfg["port"] and
+                    self.connection.get("model") in MODELS and
+                    cfg["model"] in {"auto", self.connection["model"]}):
                 raise Problem("Conecte e identifique o Rigol neste endereço antes de medir.", 409)
+            if mode == "real":
+                cfg = settings(cfg | {"model": self.connection["model"]})
             if not self.executable.is_file():
                 raise Problem("O programa de medição não foi compilado. Execute make.", 503)
             run = "ui_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:8]
@@ -134,7 +143,7 @@ class App:
             stop_warning = ""
             if cancelled and mode == "real":
                 try:
-                    if scope_query(cfg["ip"], cfg["port"], ":STOP;:TRIG:STAT?", 2) != "STOP":
+                    if read_scope(cfg["ip"], cfg["port"], "stop", cfg["model"], timeout=2)["state"] != "STOP":
                         stop_warning = " Não foi possível confirmar STOP no Rigol."
                 except (OSError, Problem):
                     stop_warning = " Não foi possível confirmar STOP no Rigol."
@@ -190,14 +199,17 @@ class App:
         action = payload.get("action")
         if action not in {"read", "apply", "run", "stop"}:
             raise Problem("Ação do Rigol desconhecida.")
-        cfg = settings(payload.get("settings", {}))
+        cfg = settings(payload.get("settings", {}), self.connection.get("model"))
         with self.lock:
             if self.closed or self.scope["busy"] or self.connection.get("checking") or (
                     self.job and self.job["state"] in ACTIVE):
                 raise Problem("Aguarde a operação em andamento.", 409)
             if not (self.connection.get("connected") and
-                    (self.connection["ip"], self.connection["port"]) == (cfg["ip"], cfg["port"])):
+                    (self.connection["ip"], self.connection["port"]) == (cfg["ip"], cfg["port"]) and
+                    self.connection.get("model") in MODELS and
+                    cfg["model"] in {"auto", self.connection["model"]}):
                 raise Problem("Conecte o Rigol neste endereço antes de configurar.", 409)
+            cfg = settings(cfg | {"model": self.connection["model"]})
             self.scope.update(busy=True, error="", snapshot=None)
         try:
             if action == "apply":
@@ -208,10 +220,10 @@ class App:
                 if result.returncode:
                     raise Problem((result.stderr or result.stdout).strip()[-1000:] or
                                   "O Rigol não confirmou a configuração.", 502)
-            state = read_scope(cfg["ip"], cfg["port"], action if action in {"run", "stop"} else "read")
+            state = read_scope(cfg["ip"], cfg["port"], action if action in {"run", "stop"} else "read", cfg["model"])
             if action == "apply":
                 verify_profile(state, cfg)
-                state = read_scope(cfg["ip"], cfg["port"], "run")
+                state = read_scope(cfg["ip"], cfg["port"], "run", cfg["model"])
             with self.lock:
                 self.scope["snapshot"] = state
             return state

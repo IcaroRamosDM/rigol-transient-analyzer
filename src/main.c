@@ -19,7 +19,9 @@ static void ajuda(const char *programa)
   printf("Uso: %s [opcoes] ENDERECO_IP\n"
     "     %s --simular [opcoes]\n"
     "     %s --entrada amostras.csv [opcoes]\n\n"
-    "Padrao: configura Rigol DHO802 e faz UMA captura NOVA.\n"
+    "Padrao: identifica Rigol DHO800/DHO900 e faz UMA captura NOVA.\n"
+    "--modelo auto|MODELO     detecta ou exige modelo especifico (padrao auto)\n"
+    "--listar-modelos         lista os perfis disponiveis\n"
     "--existente              le a memoria congelada; nao reconfigura os canais\n"
     "--configurar-apenas     aplica e confirma o perfil; nao captura nem salva arquivos\n"
     "--sem-configurar         captura nova com configuracao atual do Rigol\n"
@@ -69,12 +71,13 @@ int main(int argc,char **argv)
     .guarda_s=20e-6,.horizonte_s=300e-6,.tolerancia_v=.05,.permanencia_s=20e-6,
     .timeout_s=5,.escala_v=.5,.escala_shunt=.1,.nominal_v=5,.tempo_div=.0002,
     .pontos=1000000,.capturas=1,.porta=5555,.ch_v=1,.ch_i=2,.sonda_v=1,.sonda_i=1,
-    .configurar=true,.banda="20M"};
+    .configurar=true,.banda="20M",.modelo="auto"};
   bool apenas_configurar=false;
   enum {SIM=1000,EXISTENTE,SEMCONFIG,CAPTURAS,SAIDA,RESISTOR,BAIXO,ALTO,JANELA,
     GUARDA,HORIZONTE,TOLERANCIA,PERMANENCIA,TIMEOUT,PONTOS,PORTA,CHV,CHI,
-    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA,APENASCONFIG};
+    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA,APENASCONFIG,MODELO,MODELOS};
   const struct option opcoes[]={
+    {"modelo",required_argument,NULL,MODELO},{"listar-modelos",no_argument,NULL,MODELOS},
     {"help",no_argument,NULL,'h'},{"simular",no_argument,NULL,SIM},
     {"configurar-apenas",no_argument,NULL,APENASCONFIG},
     {"existente",no_argument,NULL,EXISTENTE},{"sem-configurar",no_argument,NULL,SEMCONFIG},
@@ -105,6 +108,8 @@ int main(int argc,char **argv)
     }
     switch (opcao) {
       case 'h': ajuda(argv[0]); return EXIT_SUCCESS;
+      case MODELO: cfg.modelo=optarg; break;
+      case MODELOS: ct_listar_modelos(); return EXIT_SUCCESS;
       case SIM: cfg.simular=true; break;
       case APENASCONFIG: apenas_configurar=true; break;
       case EXISTENTE: cfg.existente=true; break;
@@ -146,6 +151,10 @@ int main(int argc,char **argv)
   if (strcmp(cfg.banda,"20M") && strcmp(cfg.banda,"OFF")) {
     fputs("Banda permitida: 20M ou OFF.\n",stderr); return EXIT_FAILURE;
   }
+  if (strcmp(cfg.modelo,"auto") && !ct_modelo(cfg.modelo)) {
+    fprintf(stderr,"Modelo sem perfil disponivel: %s. Use --listar-modelos.\n",cfg.modelo);
+    return EXIT_FAILURE;
+  }
   if (ct_validar_config(&cfg,erro)<0) { fprintf(stderr,"%s\n",erro); return EXIT_FAILURE; }
   if (!cfg.simular && !cfg.entrada) {
     if (optind+1!=argc) { ajuda(argv[0]); return EXIT_FAILURE; }
@@ -155,10 +164,13 @@ int main(int argc,char **argv)
   sigemptyset(&acao.sa_mask);
   sigaction(SIGINT,&acao,NULL); sigaction(SIGTERM,&acao,NULL);
   CtRede rede={.fd=-1}; char id[256]="";
+  bool controle_autorizado=false;
   if (!cfg.simular && !cfg.entrada) {
     progresso("conectando",0,cfg.capturas);
     if (ct_conectar(&rede,&cfg,erro)<0 ||
-        ct_identificar(&rede,id,sizeof id,erro)<0) goto falha;
+        ct_identificar(&rede,id,sizeof id,erro)<0 ||
+        ct_validar_modelo(&cfg,id,erro)<0) goto falha;
+    controle_autorizado=true;
     if (cfg.configurar) {
       progresso("configurando",0,cfg.capturas);
       if (ct_configurar(&rede,&cfg,erro)<0) goto falha;
@@ -239,7 +251,7 @@ falha:
   if (rede.fd>=0) {
     char limpeza[CT_ERRO];
     ct_cancelado=0;
-    (void)ct_comando(&rede,":STOP",limpeza);
+    if (controle_autorizado) (void)ct_comando(&rede,":STOP",limpeza);
     ct_desconectar(&rede);
   }
   fprintf(stderr,"Erro: %s\n",erro);

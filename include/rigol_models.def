@@ -1,0 +1,11 @@
+// Shared C/Python catalog. Fields: model, series, channels, MHz, min seconds/div,
+// max seconds/div, min volts/div at 1x, bench validated.
+// Sources: Rigol DHO800/DHO900 Programming Guide and series data sheets.
+RIGOL_MODEL("DHO802", "DHO800", 2, 70, 5e-9, 500, 5e-4, 1)
+RIGOL_MODEL("DHO804", "DHO800", 4, 70, 5e-9, 500, 5e-4, 0)
+RIGOL_MODEL("DHO812", "DHO800", 2, 100, 5e-9, 500, 5e-4, 0)
+RIGOL_MODEL("DHO814", "DHO800", 4, 100, 5e-9, 500, 5e-4, 0)
+RIGOL_MODEL("DHO914", "DHO900", 4, 125, 2e-9, 500, 2e-4, 0)
+RIGOL_MODEL("DHO914S", "DHO900", 4, 125, 2e-9, 500, 2e-4, 0)
+RIGOL_MODEL("DHO924", "DHO900", 4, 250, 2e-9, 500, 2e-4, 0)
+RIGOL_MODEL("DHO924S", "DHO900", 4, 250, 2e-9, 500, 2e-4, 0)

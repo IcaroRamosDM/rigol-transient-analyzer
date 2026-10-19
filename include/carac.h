@@ -15,7 +15,7 @@ typedef struct {
   size_t pontos;
   unsigned capturas, porta, ch_v, ch_i, sonda_v, sonda_i;
   bool existente, simular, configurar, graficos;
-  const char *ip, *saida, *entrada, *banda;
+  const char *ip, *saida, *entrada, *banda, *modelo;
 } CtConfig;
 
 typedef struct {
@@ -53,6 +53,16 @@ typedef struct {
 
 typedef struct { double minimo, maximo, media; } CtResumo;
 typedef struct { int fd; double timeout; } CtRede;
+typedef struct {
+  const char *nome, *serie;
+  unsigned canais, banda_mhz;
+  double tempo_min, tempo_max, escala_min;
+  bool validado;
+} CtModelo;
+const CtModelo *ct_modelo(const char *nome);
+const CtModelo *ct_modelo_identidade(const char *id);
+void ct_listar_modelos(void);
+int ct_validar_modelo(const CtConfig *cfg, const char *id, char *erro);
 
 extern volatile sig_atomic_t ct_cancelado;
 int ct_falha(char *erro, const char *formato, ...);

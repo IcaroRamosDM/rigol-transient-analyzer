@@ -10,8 +10,9 @@ function cell(label, value) {
   dt.textContent=label; dd.textContent=value; row.append(dt,dd); return row;
 }
 function renderScope() {
-  const scope=S.scope || {}, state=scope.snapshot, cfg=config();
+  const scope=S.scope || {}, cfg=config();
   const available=currentConnection() && S.online;
+  const state=available && scope.snapshot?.model===S.connection.model ? scope.snapshot : null;
   $("scopeState").textContent=scope.busy ? "Comunicando…" :
     !available ? "Sem conexão verificada" : state ? (stateLabels[state.state] || state.state) : "Ajustes ainda não lidos";
   $("scopeState").className="badge " + (state && available && !scope.busy ? "real" : "neutral");

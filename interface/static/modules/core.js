@@ -1,4 +1,5 @@
 "use strict";
+import { updateModelControls } from "./models.js";
 import { setTimeSeconds, updateTimeControls } from "./timebase.js";
 export const $ = id => document.getElementById(id);
 export const inputs = Array.from(document.querySelectorAll("[data-key]"));
@@ -57,7 +58,7 @@ export function config() {
   for (const input of inputs) {
     const key = input.dataset.key;
     value[key] = input.type === "checkbox" ? input.checked :
-      ["ip", "bandwidth"].includes(key) ? input.value.trim() :
+      ["ip", "bandwidth", "model"].includes(key) ? input.value.trim() :
       Number(input.value) / Number(input.dataset.factor || 1);
   }
   return value;
@@ -65,25 +66,31 @@ export function config() {
 export function fillConfig(defaults) {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem("rta.settings.v1") || "{}"); } catch (_) {}
+  let savedTime=defaults.time_div;
   for (const input of inputs) {
     const key = input.dataset.key;
     const value = Object.hasOwn(saved, key) ? saved[key] : defaults[key];
-    if (key === "time_div") { setTimeSeconds(Number(value),false); continue; }
+    if (key === "time_div") { savedTime=Number(value); continue; }
     if (input.type === "checkbox") input.checked = typeof value === "boolean" ? value : defaults[key];
-    else input.value = ["ip", "bandwidth"].includes(key) ? value :
+    else input.value = ["ip", "bandwidth", "model"].includes(key) ? value :
       Number(value) * Number(input.dataset.factor || 1);
+    if (key === "model" && !input.value) input.value = defaults.model;
   }
+  updateModelControls(S.connection, {...config(), time_div:savedTime});
+  setTimeSeconds(savedTime,false);
 }
 export function saveConfig() {
   try { localStorage.setItem("rta.settings.v1", JSON.stringify(config())); } catch (_) {}
 }
 export function currentConnection() {
   const c = S.connection;
-  return c.connected && c.ip === $("ip").value.trim() && c.port === Number($("port").value);
+  return c.connected && c.ip === $("ip").value.trim() && c.port === Number($("port").value) &&
+    ["auto", c.model].includes($("model").value);
 }
 export function controls() {
   const busy = S.busy || active() || S.scope.busy || S.closed || !S.ready || !S.online;
   for (const input of inputs) input.disabled = busy;
+  updateModelControls(S.connection, config());
   updateTimeControls(busy);
   $("connect").disabled = busy;
   $("demo").disabled = busy;
@@ -100,7 +107,7 @@ export function controls() {
   $("deviceBadge").className = "badge " + (connected ? "real" : "neutral");
   $("deviceBadge").replaceChildren();
   $("deviceBadge").append(document.createElement("i"),
-    document.createTextNode(S.closed ? "Aplicativo encerrado" : connected ? "Rigol DHO802 identificado" :
+    document.createTextNode(S.closed ? "Aplicativo encerrado" : connected ? "Rigol " + S.connection.model + " identificado" :
       S.busy ? "Verificando conexão…" : "Rigol não conectado"));
   document.querySelectorAll("[data-scope-action], #scopeApply").forEach(button => {
     button.disabled = busy || !connected;
@@ -113,5 +120,8 @@ export function controls() {
   $("connect").textContent = connected ? "Verificar" : "Conectar";
   $("connectionInfo").textContent = connected ?
     S.connection.model + " · " + S.connection.serial + " · verificado às " + date(S.connection.checked_at) :
-    "A conexão identifica o instrumento sem iniciar uma captura.";
+    S.connection.connected && S.connection.ip === $("ip").value.trim() && S.connection.port === Number($("port").value) &&
+      !["auto", S.connection.model].includes($("model").value) ?
+      "Identificado: " + S.connection.model + ". Selecione esse modelo ou use a detecção automática." :
+      "A conexão identifica o instrumento sem iniciar uma captura.";
 }

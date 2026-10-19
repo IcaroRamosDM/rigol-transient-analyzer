@@ -25,17 +25,17 @@ class TimebaseTests(unittest.TestCase):
                 settings({"time_div":value})
 
     def test_equivalent_units_and_physical_limits(self):
-        for value in [210e-6,.21e-3,210000e-9,5e-9,1000]:
+        for value in [210e-6,.21e-3,210000e-9,5e-9,500]:
             self.assertTrue(valid_time(value),value)
             self.assertEqual(settings({"time_div":value})["time_div"],value)
-        for value in [4.9e-9,1001,0]:
+        for value in [4.9e-9,501,0]:
             with self.assertRaises(Problem):
                 settings({"time_div":value})
 
     def test_shared_grid_is_complete_and_contiguous(self):
         bands=TIMEBASE["bands"]
         self.assertEqual(bands[0]["start_ps"],5000)
-        self.assertEqual(bands[-1]["end_ps"],10**15)
+        self.assertEqual(bands[-1]["end_ps"],500*10**12)
         for previous, current in zip(bands,bands[1:]):
             self.assertEqual(previous["end_ps"],current["start_ps"])
         for b in bands:

@@ -2,6 +2,7 @@ import { configureTimebase, initTimebase } from "./modules/timebase.js";
 import { $, S, inputs, titles, active, controls, api, say, config, saveConfig, fillConfig } from "./modules/core.js";
 import { draw, selectEvent, setRange, eventRange, zoom } from "./modules/chart.js";
 import { refreshHistory, openRun, selectCapture, renderEvent } from "./modules/results.js";
+import { configureModels, initModels } from "./modules/models.js";
 import { initRigol } from "./modules/rigol.js";
 
 function showView(name) {
@@ -20,7 +21,7 @@ function showView(name) {
 async function connect() {
   S.busy = true; controls(); say("");
   try {
-    S.connection = await api("/api/connect", {ip: $("ip").value.trim(), port: Number($("port").value)});
+    S.connection = await api("/api/connect", {ip: $("ip").value.trim(), port: Number($("port").value), model: $("model").value});
     say("Rigol identificado. Confira a preparação da bancada e inicie a medição.");
   } catch (error) {
     S.connection = (await api("/api/status").catch(() => ({connection: {}}))).connection;
@@ -85,7 +86,7 @@ async function poll() {
   finally { polling = false; }
 }
 document.querySelectorAll("[data-view]").forEach(button=>button.addEventListener("click",()=>showView(button.dataset.view)));
-inputs.filter(input=>input.id!=="timeDiv").forEach(input=>input.addEventListener("change",()=>{saveConfig();controls();}));
+inputs.filter(input=>input.id!=="timeDiv").forEach(input=>input.addEventListener("change",()=>{controls();saveConfig();}));
 $("settingsForm").addEventListener("submit",e=>{e.preventDefault();start("real");});
 $("connect").addEventListener("click",connect);
 $("demo").addEventListener("click",()=>start("demo"));
@@ -109,6 +110,7 @@ async function init(){
   try{
     const data=await api("/api/bootstrap");
     S.token=data.token;S.defaults=data.defaults;S.connection=data.connection;S.job=data.job;S.scope=data.scope;S.closed=data.closed;
+    configureModels(data.models);
     configureTimebase(data.timebase);
     fillConfig(data.defaults);S.ready=true;controls();renderJob();
     await refreshHistory();await poll();
@@ -121,6 +123,7 @@ async function init(){
 document.addEventListener("rta:view", e=>showView(e.detail));
 document.addEventListener("rta:job-render", renderJob);
 document.addEventListener("rta:event-render", renderEvent);
+initModels(()=>{ S.scope.snapshot=null; controls(); saveConfig(); });
 initRigol();
 initTimebase(()=>{saveConfig();controls();});
 init();setInterval(poll,1000);

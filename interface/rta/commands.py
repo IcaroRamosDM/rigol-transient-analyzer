@@ -7,7 +7,7 @@ def build_command(executable, results, run, mode, cfg, configuration_only=False)
         cfg = {**cfg, "plots": False, "captures": 1}
     else:
         command.extend(["--saida", str(results / run)])
-    options = dict(resistor="resistor", capturas="captures", pontos="points",
+    options = dict(modelo="model", resistor="resistor", capturas="captures", pontos="points",
                    porta="port", **{"sonda-v": "probe_v", "sonda-i": "probe_i",
                    "nominal-v": "nominal", "escala-v": "scale_v", "escala-shunt": "scale_i",
                    "tempo-div": "time_div", "banda": "bandwidth", "baixo-a": "low_a",

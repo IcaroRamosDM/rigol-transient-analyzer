@@ -144,8 +144,8 @@ int ct_preambulo(const char *texto, CtPreambulo *p, char *erro)
 int ct_identificar(CtRede *r, char *id, size_t tamanho, char *erro)
 {
   if (ct_consultar(r, "*IDN?", id, tamanho, erro) < 0) return -1;
-  if (!strstr(id, "RIGOL") || !strstr(id, ",DHO802,"))
-    return ct_falha(erro, "Instrumento nao reconhecido como Rigol DHO802: %s", id);
+  if (!ct_modelo_identidade(id))
+    return ct_falha(erro, "Modelo Rigol sem perfil disponivel: %s", id);
   return 0;
 }
 

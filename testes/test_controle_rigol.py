@@ -19,11 +19,12 @@ from interface.rta.common import Problem, settings
 
 
 class MultiSessionScope(Instrumento):
-    def __init__(self, wrong_model=False, mismatch=False):
+    def __init__(self, wrong_model=False, mismatch=False, model="DHO802"):
         self.stopping = threading.Event()
         self.commands = []
         self.wrong_model = wrong_model
         self.mismatch = mismatch
+        self.model = model
         super().__init__()
         self.parametros.update({":TIM:MAIN:SCAL": ".0002", ":ACQ:MDEP": "1000000",
             ":TRIG:EDGE:SOUR": "CHAN2", ":TRIG:EDGE:SLOP": "POS", ":TRIG:EDGE:LEV": ".1"})
@@ -33,8 +34,8 @@ class MultiSessionScope(Instrumento):
                 self.parametros[f":CHAN{channel}:{name}"] = str(value)
 
     def consulta(self, command):
-        if command == "*IDN?" and self.wrong_model:
-            return "OTHER,DEVICE,SERIAL,1"
+        if command == "*IDN?":
+            return "OTHER,DEVICE,SERIAL,1" if self.wrong_model else "RIGOL TECHNOLOGIES," + self.model + ",TESTE_PROTOCOLO,SIMULADO"
         if command == ":CHAN1:SCAL?" and self.mismatch:
             return "99"
         return super().consulta(command)
