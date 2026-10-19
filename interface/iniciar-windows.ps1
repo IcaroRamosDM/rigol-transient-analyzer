@@ -12,7 +12,7 @@ $ctUrl = 'http://localhost:' + $Port
 function Test-RtaInterface {
     try {
         $ctInfo = Invoke-RestMethod -Uri ($ctUrl + '/api/bootstrap') -TimeoutSec 1
-        return $ctInfo.app -eq 'Rigol Transient Analyzer'
+        return ($ctInfo.app -eq 'Rigol Transient Analyzer') -and ($ctInfo.closed -ne $true)
     } catch { return $false }
 }
 if (-not (Test-RtaInterface)) {

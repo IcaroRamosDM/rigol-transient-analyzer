@@ -19,7 +19,7 @@ spec.loader.exec_module(ui)
 BIN = Path(os.environ.get("CT_BIN", ROOT / "build/carac_transientes"))
 
 
-class InterfaceTests(unittest.TestCase):
+class InterfaceHarness:
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name)
@@ -66,6 +66,17 @@ class InterfaceTests(unittest.TestCase):
         job = self.wait()
         self.assertEqual(job["state"], "done", job)
         return job
+
+
+class InterfaceTests(InterfaceHarness, unittest.TestCase):
+    def test_idle_shutdown_actually_stops_server(self):
+        code, body = self.request("/api/shutdown", {})
+        self.assertEqual(code, 200)
+        self.assertTrue(json.loads(body)["closed"])
+        self.thread.join(2)
+        self.assertFalse(self.thread.is_alive())
+        self.assertTrue(self.app.closed)
+        self.assertTrue(self.app.snapshot()["closed"])
 
     def test_bootstrap_has_reference_defaults(self):
         code, body = self.request("/api/bootstrap")
@@ -126,13 +137,13 @@ class InterfaceTests(unittest.TestCase):
         self.assertIsNone(self.app.job)
 
     def test_other_instrument_is_not_accepted(self):
-        with mock.patch.object(ui, "scope_query", return_value="OTHER,MODEL,SERIAL,1"):
+        with mock.patch("interface.rta.service.scope_query", return_value="OTHER,MODEL,SERIAL,1"):
             with self.assertRaises(ui.Problem):
                 self.app.connect(dict(ip="127.0.0.1", port=5555))
         self.assertFalse(self.app.connection["connected"])
 
     def test_demo_uses_c_and_exports_independent_captures(self):
-        with mock.patch.object(ui, "scope_query", side_effect=AssertionError("Demo contacted instrument")):
+        with mock.patch("interface.rta.service.scope_query", side_effect=AssertionError("Demo contacted instrument")):
             job = self.demo(2)
         self.assertEqual(job["phase"], "finalizando")
         detail = self.app.detail(job["id"])
@@ -213,7 +224,7 @@ class InterfaceTests(unittest.TestCase):
         from test_integracao import Instrumento
         inst = Instrumento()
         try:
-            with mock.patch.object(ui, "scope_query", return_value="RIGOL TECHNOLOGIES,DHO802,FIXTURE,TEST"):
+            with mock.patch("interface.rta.service.scope_query", return_value="RIGOL TECHNOLOGIES,DHO802,FIXTURE,TEST"):
                 self.app.connect(dict(ip="127.0.0.1", port=inst.porta))
             self.app.start(dict(mode="real", settings=dict(ip="127.0.0.1", port=inst.porta,
                            points=1000, plots=False, timeout=1)))

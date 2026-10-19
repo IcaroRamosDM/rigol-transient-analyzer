@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 460" role="img" aria-labelledby="title desc">
+<title id="title">Carga comutada com IRFZ44N</title><desc id="desc">Ramo fixo de 100 ohms e ramo de 22 ohms, MOSFET e shunt de 1 ohm. Resistor de 100 kilohms entre G e S. Todos os terras em 0 V.</desc>
+<style>text{font:14px "Segoe UI",sans-serif;fill:#516d7b}.wire{fill:none;stroke:#69818c;stroke-width:2.2;stroke-linejoin:round}.resistor{fill:white;stroke:#69818c;stroke-width:2}.pin{font-weight:600;fill:#324e5d}.channel{font-weight:600;font-size:15px}</style>
+<g class="wire"><path d="M70 80H300M390 80H740V420H70M200 80V140H285M380 140H530V165M70 215H260M340 215H480M420 215V285M420 325V340H530M530 265V360M530 396V420M70 265H150V420"/>
+<rect class="resistor" x="300" y="68" width="90" height="24"/><rect class="resistor" x="285" y="128" width="95" height="24"/><rect class="resistor" x="260" y="204" width="80" height="22"/><rect class="resistor" x="409" y="285" width="22" height="40"/><rect class="resistor" x="518" y="360" width="24" height="36"/>
+<rect x="480" y="165" width="100" height="100" rx="10" fill="#edf3f6" stroke="#97abb5"/></g>
+<g text-anchor="middle"><text x="345" y="53">100 Ω / 1 W</text><text x="332" y="116">22 Ω / 5 W</text><text x="300" y="192">220 Ω</text><text x="530" y="204">IRFZ44N</text><text x="530" y="229">MOSFET</text></g>
+<text x="55" y="58" class="pin">+5 V</text><text x="70" y="184">GV-2002 OUT</text><text x="70" y="241">vermelho</text><text x="70" y="291">preto</text>
+<text x="466" y="205" text-anchor="end" class="pin">G</text><text x="547" y="156" class="pin">D</text><text x="547" y="282" class="pin">S</text><text x="396" y="311" text-anchor="end">100 kΩ</text><text x="558" y="383">1 Ω / 1 W</text>
+<circle cx="200" cy="80" r="6" fill="#ca8504"/><text x="200" y="32" text-anchor="middle" class="channel" fill="#ad7409" style="fill:#ad7409">CH1 · 10×</text>
+<circle cx="420" cy="215" r="3" fill="#69818c"/><circle cx="530" cy="340" r="6" fill="#078794"/><text x="572" y="344" class="channel" style="fill:#067b85">CH2 · 1×</text>
+<text x="70" y="448">0 V · retorno comum das duas pontas e do gerador</text></svg>

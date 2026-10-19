@@ -21,6 +21,7 @@ static void ajuda(const char *programa)
     "     %s --entrada amostras.csv [opcoes]\n\n"
     "Padrao: configura Rigol DHO802 e faz UMA captura NOVA.\n"
     "--existente              le a memoria congelada; nao reconfigura os canais\n"
+    "--configurar-apenas     aplica e confirma o perfil; nao captura nem salva arquivos\n"
     "--sem-configurar         captura nova com configuracao atual do Rigol\n"
     "--capturas N             1..100 capturas novas (padrao 1)\n"
     "--saida PASTA            pasta NOVA; padrao resultados/ensaio_DATA_PID\n"
@@ -69,11 +70,13 @@ int main(int argc,char **argv)
     .timeout_s=5,.escala_v=.5,.escala_shunt=.1,.nominal_v=5,.tempo_div=.0002,
     .pontos=1000000,.capturas=1,.porta=5555,.ch_v=1,.ch_i=2,.sonda_v=1,.sonda_i=1,
     .configurar=true,.banda="20M"};
+  bool apenas_configurar=false;
   enum {SIM=1000,EXISTENTE,SEMCONFIG,CAPTURAS,SAIDA,RESISTOR,BAIXO,ALTO,JANELA,
     GUARDA,HORIZONTE,TOLERANCIA,PERMANENCIA,TIMEOUT,PONTOS,PORTA,CHV,CHI,
-    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA};
+    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA,APENASCONFIG};
   const struct option opcoes[]={
     {"help",no_argument,NULL,'h'},{"simular",no_argument,NULL,SIM},
+    {"configurar-apenas",no_argument,NULL,APENASCONFIG},
     {"existente",no_argument,NULL,EXISTENTE},{"sem-configurar",no_argument,NULL,SEMCONFIG},
     {"capturas",required_argument,NULL,CAPTURAS},{"saida",required_argument,NULL,SAIDA},
     {"resistor",required_argument,NULL,RESISTOR},{"baixo-a",required_argument,NULL,BAIXO},
@@ -103,6 +106,7 @@ int main(int argc,char **argv)
     switch (opcao) {
       case 'h': ajuda(argv[0]); return EXIT_SUCCESS;
       case SIM: cfg.simular=true; break;
+      case APENASCONFIG: apenas_configurar=true; break;
       case EXISTENTE: cfg.existente=true; break;
       case SEMCONFIG: cfg.configurar=false; break;
       case CAPTURAS: cfg.capturas=u; break;
@@ -133,6 +137,11 @@ int main(int argc,char **argv)
     }
   }
   char erro[CT_ERRO]="",raiz[CT_CAMINHO];
+  if (apenas_configurar && (cfg.existente || cfg.simular || cfg.entrada ||
+      !cfg.configurar || cfg.saida || cfg.graficos || cfg.capturas!=1)) {
+    fputs("--configurar-apenas requer instrumento, sem captura/saida/graficos.\n",stderr);
+    return EXIT_FAILURE;
+  }
   if (cfg.existente || cfg.simular || cfg.entrada) cfg.configurar=false;
   if (strcmp(cfg.banda,"20M") && strcmp(cfg.banda,"OFF")) {
     fputs("Banda permitida: 20M ou OFF.\n",stderr); return EXIT_FAILURE;
@@ -155,6 +164,11 @@ int main(int argc,char **argv)
       if (ct_configurar(&rede,&cfg,erro)<0) goto falha;
     }
     if (cfg.existente && ct_comando(&rede,":STOP",erro)<0) goto falha;
+  }
+  if (apenas_configurar) {
+    ct_desconectar(&rede);
+    puts("Perfil aplicado e confirmado; Rigol em STOP.");
+    return EXIT_SUCCESS;
   }
   if (ct_diretorio(cfg.saida,raiz,sizeof raiz,erro)<0) goto falha;
   printf("Resultados: %s\n",raiz);
