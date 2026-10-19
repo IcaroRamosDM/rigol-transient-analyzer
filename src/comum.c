@@ -1,9 +1,21 @@
 #include "carac.h"
 #include <math.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <direct.h>
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 volatile sig_atomic_t ct_cancelado = 0;
 
@@ -18,17 +30,111 @@ int ct_falha(char *erro, const char *formato, ...)
 
 double ct_agora(void)
 {
+#ifdef _WIN32
+  return (double)GetTickCount64() / 1000.0;
+#else
   struct timespec t;
   if (clock_gettime(CLOCK_MONOTONIC, &t) < 0) return 0;
   return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
+#endif
 }
 
 void ct_instante(char *texto, size_t tamanho)
 {
   time_t agora = time(NULL);
   struct tm t;
+#ifdef _WIN32
+  gmtime_s(&t, &agora);
+#else
   gmtime_r(&agora, &t);
+#endif
   strftime(texto, tamanho, "%Y-%m-%dT%H:%M:%SZ", &t);
+}
+
+bool ct_interrompido(void)
+{
+#ifdef _WIN32
+  static ULONGLONG proxima_consulta;
+  ULONGLONG agora=GetTickCount64();
+  if (!ct_cancelado && agora>=proxima_consulta) {
+    proxima_consulta=agora+20;
+    const wchar_t *arquivo = _wgetenv(L"RTA_CANCEL_FILE");
+    if (arquivo && *arquivo && GetFileAttributesW(arquivo) != INVALID_FILE_ATTRIBUTES)
+      ct_cancelado = 1;
+  }
+#endif
+  return ct_cancelado != 0;
+}
+
+void ct_ignorar_cancelamento(void)
+{
+#ifdef _WIN32
+  _wputenv_s(L"RTA_CANCEL_FILE", L"");
+#endif
+  ct_cancelado = 0;
+}
+
+void ct_pausa(void)
+{
+#ifdef _WIN32
+  Sleep(20);
+#else
+  struct timespec pausa = {.tv_nsec=20000000};
+  nanosleep(&pausa, NULL);
+#endif
+}
+
+#ifdef _WIN32
+static int para_wide(const char *texto, wchar_t *destino, size_t tamanho)
+{
+  if (!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,texto,-1,destino,(int)tamanho)) {
+    errno=EINVAL; return -1;
+  }
+  return 0;
+}
+#endif
+
+int ct_criar_pasta(const char *caminho)
+{
+#ifdef _WIN32
+  wchar_t destino[CT_CAMINHO];
+  if (para_wide(caminho,destino,CT_CAMINHO)<0) return -1;
+  return _wmkdir(destino);
+#else
+  return mkdir(caminho, 0755);
+#endif
+}
+
+FILE *ct_abrir_arquivo(const char *caminho, const char *modo)
+{
+#ifdef _WIN32
+  wchar_t destino[CT_CAMINHO], acesso[16];
+  if (para_wide(caminho,destino,CT_CAMINHO)<0 || para_wide(modo,acesso,16)<0) return NULL;
+  if (modo[0]=='w' && modo[1]=='x' && !modo[2]) {
+    int fd=_wopen(destino,_O_CREAT|_O_EXCL|_O_WRONLY|_O_TEXT,_S_IREAD|_S_IWRITE);
+    if (fd<0) return NULL;
+    FILE *arquivo=_wfdopen(fd,L"w");
+    if (!arquivo) _close(fd);
+    return arquivo;
+  }
+  return _wfopen(destino,acesso);
+#else
+  return fopen(caminho,modo);
+#endif
+}
+
+char *ct_pasta_atual(char *destino, size_t tamanho)
+{
+#ifdef _WIN32
+  wchar_t pasta[CT_CAMINHO];
+  if (!_wgetcwd(pasta,CT_CAMINHO) ||
+      !WideCharToMultiByte(CP_UTF8,0,pasta,-1,destino,(int)tamanho,NULL,NULL)) {
+    errno=EINVAL; return NULL;
+  }
+  return destino;
+#else
+  return getcwd(destino,tamanho);
+#endif
 }
 
 void ct_liberar(CtCaptura *c)

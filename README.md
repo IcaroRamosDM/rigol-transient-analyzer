@@ -11,6 +11,8 @@ voltage at the circuit; CH2 measures a current-sense resistor. The program
 converts the resistor voltage into current, detects load steps, and saves
 measurements, summaries, statistics, and optional plots.
 
+**Windows: [Download the installer](https://github.com/IcaroRamosDM/rigol-transient-analyzer/releases/latest).**
+
 ## Features
 
 - Local browser interface for instrument setup, measurements, plots, and history.
@@ -77,9 +79,58 @@ require a separate review of commands, waveform framing and scaling, and
 trigger behavior before a driver can be added. Model capabilities are
 defined once in `include/rigol_models.def` and shared by C and Python.
 
-## Requirements and build
+## Windows installer
 
-Run on Linux, or in Ubuntu under Windows Subsystem for Linux (WSL).
+Download the Windows x64 installer from [GitHub Releases](https://github.com/IcaroRamosDM/rigol-transient-analyzer/releases/latest).
+The file is named `RigolTransientAnalyzer-<version>-windows-x64-setup.exe`.
+
+1. Run the installer and follow the installation wizard. Installation is
+   for the current user and does not require administrator privileges.
+2. Open **Rigol Transient Analyzer** from the Windows Start menu. The
+   application opens its interface in the default browser.
+3. Click **Explorar demonstração** to try it without instruments, or follow
+   the measurement and scope-configuration instructions below.
+
+The installer includes the native C executable, Python runtime, plotting
+libraries, and interface assets. Users do not need WSL, Python, a compiler,
+or an Internet connection to run the installed application. Ethernet
+communication with the scope remains necessary for real measurements.
+
+The package targets **Windows 10 version 1903 or later and Windows 11,
+x64**. The interface stays local to the computer. If its usual port 8765
+is occupied, the Windows app tries ports 8766 through 8775. Launching it
+again opens the existing instance.
+
+| Location | Contents |
+| --- | --- |
+| `%LOCALAPPDATA%\Programs\RigolTransientAnalyzer` | Default application installation |
+| Windows Documents folder → `Rigol Transient Analyzer\resultados` | Measurements, CSV/JSON exports, and PNGs |
+| `%LOCALAPPDATA%\RigolTransientAnalyzer` | Instance state, caches, and `logs\application.log` |
+
+The actual Windows Documents location is used, including redirected
+folders. The Start-menu **Resultados** shortcut opens the measurements
+folder. Use **Encerrar aplicativo** in the interface to stop the background
+application; closing the browser alone leaves it available for reopening.
+
+Run a newer installer to update the application. Finish or cancel an
+active measurement first: the installer refuses to update or uninstall
+while a measurement or scope-control operation is active. Uninstall from
+Windows Settings → Apps → Installed apps. Saved measurements and per-user
+application data are preserved.
+
+The current installer is not digitally signed. A `SHA256SUMS.txt` file is
+provided with the release. To calculate a downloaded installer's checksum
+in PowerShell, replace the filename with the version you downloaded:
+
+```powershell
+Get-FileHash .\RigolTransientAnalyzer-0.1.0-windows-x64-setup.exe -Algorithm SHA256
+```
+
+Compare the value with the release checksum file. Physical model-validation
+status remains as documented in the compatibility table above.
+
+## Build from source on Linux or WSL
+
 Requirements are a C17 compiler, GNU Make, and Python 3 with virtual
 environment support for integration tests and optional plots.
 
@@ -119,15 +170,17 @@ a new results directory.
 
 ## Local browser interface
 
-Start the application from the project directory:
+For an installed Windows copy, use the Start-menu shortcut. To start a
+source checkout on Linux or WSL, run this from the project directory:
 
 ```bash
 make interface
 ```
 
 It opens `http://localhost:8765` in the browser. On Windows, with Ubuntu
-under WSL installed, you can also double-click `iniciar-interface.cmd`
-from the project folder. The Windows launcher defaults to the
+under WSL installed, developers can also double-click `iniciar-interface.cmd`
+from the source checkout. This launcher uses WSL; the Windows installer
+provides the native application described above. The Windows launcher defaults to the
 `Ubuntu-26.04` distribution; another installed distribution can be selected
 with `iniciar-interface.cmd -Distribution NAME`. On Linux, `./iniciar-interface.sh` builds the
 executable and starts the interface.
@@ -526,11 +579,14 @@ operation separately from electrical interpretation of the waveforms.
 | `src/main.c` | Options and run coordination |
 | `src/rigol.c` | Network, scope configuration, triggering, waveform transfer |
 | `src/modelos.c` | Model identity parsing and C compatibility checks |
+| `VERSION` | Application and installer version |
 | `include/rigol_models.def` | Shared model catalog and capability limits |
 | `src/analise.c` | Event detection, measurements, synthetic waveforms |
 | `src/arquivos.c` | Export, CSV import, statistics, plot invocation |
 | `src/comum.c`, `include/carac.h` | Shared types and utilities |
 | `interface/servidor.py` | Local server entry point and single-instance lifecycle |
+| `interface/rta/runtime.py`, `instance.py`, `process.py` | Platform paths, instance lock, and cancellation |
+| `packaging/windows/` | Native launcher, dependency pins, manifests, installer builder, and smoke tests |
 | `interface/rta/` | Settings, model profiles, scope control, jobs, results, and HTTP API |
 | `interface/static/modules/` | Browser modules for controls, models, timebase, charts, and results |
 | `interface/static/assets/circuit.svg` | Reference circuit diagram |
@@ -543,11 +599,51 @@ The original utility programs remain available through `make antigos`:
 `identificar_rigol`, `consultar_rigol`, `parametros_onda`, and `receber_onda`,
 all built under `build/`.
 
+### Build the Windows installer
+
+These tools are needed only on the development/build computer:
+64-bit CPython 3.14, MinGW-w64 GCC with `windres`, and NSIS 3.
+The builder detects GCC in PATH or the standard MSYS2 UCRT64/MINGW64
+locations, and NSIS in PATH or its standard installation directory.
+
+From a source checkout in Windows PowerShell:
+
+```powershell
+py -3.14 -m venv .venv-windows
+.\.venv-windows\Scripts\python.exe -m pip install -r packaging\windows\requirements-build.txt
+.\.venv-windows\Scripts\python.exe packaging\windows\build.py
+```
+
+The builder compiles the native core, freezes the application and plotting
+runtime, generates version resources and third-party notices, exercises a
+Unicode-path simulation with PNG export, and creates the installer and
+checksums under `dist\windows`. Build dependencies are pinned separately
+from the runtime requirements used by source installations.
+
+A prebuilt Windows x64 core may be supplied with `--core PATH`.
+`--output PATH` selects the build destination; `--skip-installer` creates
+and verifies the application folder without invoking NSIS. On Linux/WSL,
+`make windows-core` can cross-compile the C executable with MinGW-w64;
+the bundled Python application must be built on Windows.
+
+`packaging/windows/smoke.py` verifies an actual installation with Python
+and WSL absent from the application's PATH, demonstration PNGs and
+downloads, single-instance behavior, cancellation, refusal of updates
+during acquisition, and preservation of results on upgrade/uninstall.
+Run it on a Windows account without an existing installed copy, using a
+new empty test directory:
+
+```powershell
+.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.1.0-windows-x64-setup.exe --work dist\windows\smoke-test
+```
+
 Instrument references:
 
 - [Rigol DHO800/DHO900 Programming Guide](https://download.rigol.com/en/Manual/Digital%20Oscilloscope/DHO900/DHO800900_ProgrammingGuide_EN.pdf)
 - [Rigol DHO800 Data Sheet](https://www.rigol.com/dam/global/downloads/brochures/en/data-sheet/oscilloscopes/DHO800_DataSheet_EN.pdf)
 - [Rigol DHO900 Data Sheet](https://www.rigol.com/dam/global/downloads/brochures/en/data-sheet/oscilloscopes/DHO900_DataSheet.pdf)
+- [PyInstaller documentation](https://pyinstaller.org/en/stable/)
+- [NSIS documentation](https://nsis.sourceforge.io/Docs/)
 
 ## Author
 

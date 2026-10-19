@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 static void interromper(int sinal) { (void)sinal; ct_cancelado=1; }
 
@@ -64,7 +68,11 @@ static int inteiro(const char *s,unsigned *valor)
   return 0;
 }
 
+#ifdef _WIN32
+static int executar(int argc,char **argv)
+#else
 int main(int argc,char **argv)
+#endif
 {
   setvbuf(stdout, NULL, _IOLBF, 0);
   CtConfig cfg={.resistor=1,.baixo_a=.05,.alto_a=.15,.janela_s=50e-6,
@@ -160,9 +168,13 @@ int main(int argc,char **argv)
     if (optind+1!=argc) { ajuda(argv[0]); return EXIT_FAILURE; }
     cfg.ip=argv[optind];
   } else if (optind!=argc) { fputs("Modo simular/entrada nao recebe IP.\n",stderr); return EXIT_FAILURE; }
+#ifdef _WIN32
+  signal(SIGINT,interromper); signal(SIGTERM,interromper);
+#else
   struct sigaction acao={.sa_handler=interromper};
   sigemptyset(&acao.sa_mask);
   sigaction(SIGINT,&acao,NULL); sigaction(SIGTERM,&acao,NULL);
+#endif
   CtRede rede={.fd=-1}; char id[256]="";
   bool controle_autorizado=false;
   if (!cfg.simular && !cfg.entrada) {
@@ -250,10 +262,29 @@ int main(int argc,char **argv)
 falha:
   if (rede.fd>=0) {
     char limpeza[CT_ERRO];
-    ct_cancelado=0;
+    ct_ignorar_cancelamento();
     if (controle_autorizado) (void)ct_comando(&rede,":STOP",limpeza);
     ct_desconectar(&rede);
   }
   fprintf(stderr,"Erro: %s\n",erro);
   return EXIT_FAILURE;
 }
+
+#ifdef _WIN32
+int wmain(int argc,wchar_t **argumentos)
+{
+  char **argv=calloc((size_t)argc+1,sizeof *argv);
+  if (!argv) return EXIT_FAILURE;
+  int resultado=EXIT_FAILURE;
+  for (int j=0;j<argc;++j) {
+    int tamanho=WideCharToMultiByte(CP_UTF8,0,argumentos[j],-1,NULL,0,NULL,NULL);
+    if (!tamanho || !(argv[j]=malloc((size_t)tamanho)) ||
+        !WideCharToMultiByte(CP_UTF8,0,argumentos[j],-1,argv[j],tamanho,NULL,NULL)) goto fim;
+  }
+  resultado=executar(argc,argv);
+fim:
+  for (int j=0;j<argc;++j) free(argv[j]);
+  free(argv);
+  return resultado;
+}
+#endif

@@ -8,7 +8,7 @@ import math
 from .models import MODELS, selected_model
 from .timebase import valid_time, floor_time, next_time, format_time
 
-ROOT = Path(__file__).resolve().parents[2]
+from .runtime import ROOT
 DEFAULTS = dict(model="auto", ip="169.254.112.67", port=5555, probe_v=10, probe_i=1,
                 resistor=1, captures=1, points=1000000, nominal=5,
                 scale_v=.5, scale_i=.1, time_div=.0002, bandwidth="20M",

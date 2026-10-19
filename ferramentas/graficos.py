@@ -31,7 +31,7 @@ def indices_envelope(v, i, limite=8000):
 
 
 def desenhar(pasta, limite):
-    meta = json.loads((pasta / "metadados.json").read_text())
+    meta = json.loads((pasta / "metadados.json").read_text(encoding="utf-8"))
     dados = np.loadtxt(pasta / "amostras.csv", delimiter=",", skiprows=1, ndmin=2)
     if dados.shape[1] != 3 or len(dados) != meta["pontos"] or not np.isfinite(dados).all():
         raise ValueError(f"Dados inconsistentes em {pasta}")
@@ -102,7 +102,7 @@ def desenhar(pasta, limite):
         "limite_visual_aproximado": limite, "reducao": "extremos de ambos os canais por intervalo",
         "calculos": "Todos os pontos originais; a reducao e somente visual",
         "arquivos": arquivos,
-    }, ensure_ascii=False, indent=2) + "\n")
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Gráficos: {destino} ({len(arquivos)} imagens)")
     return len(arquivos)
 

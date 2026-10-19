@@ -7,8 +7,16 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <direct.h>
+#include <process.h>
+#define getpid _getpid
+#else
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 static void json_texto(FILE *f, const char *s)
 {
@@ -29,7 +37,7 @@ static FILE *novo_arquivo(const char *pasta, const char *nome, char *erro)
   if (n < 0 || (size_t)n >= sizeof caminho) {
     ct_falha(erro, "Caminho muito longo."); return NULL;
   }
-  FILE *f = fopen(caminho, "wx");
+  FILE *f = ct_abrir_arquivo(caminho, "wx");
   if (!f) ct_falha(erro, "Nao foi possivel criar %s: %s", caminho, strerror(errno));
   return f;
 }
@@ -44,34 +52,53 @@ static int fechar(FILE *f, char *erro)
 int ct_diretorio(const char *solicitado, char *destino, size_t tamanho, char *erro)
 {
   char padrao[256], atual[CT_CAMINHO];
-  if (!getcwd(atual, sizeof atual)) return ct_falha(erro, "getcwd: %s", strerror(errno));
+  if (!ct_pasta_atual(atual, sizeof atual)) return ct_falha(erro, "getcwd: %s", strerror(errno));
   if (!solicitado) {
     char quando[64]; ct_instante(quando, sizeof quando);
     for (char *p = quando; *p; ++p) if (*p == ':' || *p == '-') *p = '_';
     snprintf(padrao, sizeof padrao, "resultados/ensaio_%s_%ld", quando, (long)getpid());
     solicitado = padrao;
   }
+#ifdef _WIN32
+  wchar_t pedido[CT_CAMINHO], completo[CT_CAMINHO];
+  if (!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,solicitado,-1,pedido,CT_CAMINHO) ||
+      !_wfullpath(completo,pedido,CT_CAMINHO) ||
+      !WideCharToMultiByte(CP_UTF8,0,completo,-1,destino,(int)tamanho,NULL,NULL))
+    return ct_falha(erro, "Caminho de saida invalido.");
+  for (char *p=destino;*p;++p) if (*p=='\\') *p='/';
+#else
   int n = solicitado[0] == '/' ? snprintf(destino,tamanho,"%s",solicitado) :
     snprintf(destino,tamanho,"%s/%s",atual,solicitado);
   if (n < 0 || (size_t)n >= tamanho) return ct_falha(erro, "Caminho de saida muito longo.");
+#endif
   size_t len = strlen(destino);
   while (len > 1 && destino[len-1] == '/') destino[--len] = '\0';
-  for (char *p = destino + 1; *p; ++p) {
+  char *inicio = destino + 1;
+#ifdef _WIN32
+  if (destino[0] && destino[1]==':' && destino[2]=='/') inicio=destino+3;
+  else if (destino[0]=='/' && destino[1]=='/') {
+    inicio=strchr(destino+2,'/');
+    if (inicio) inicio=strchr(inicio+1,'/');
+    if (!inicio) return ct_falha(erro,"Informe uma pasta dentro do compartilhamento.");
+    ++inicio;
+  }
+#endif
+  for (char *p = inicio; *p; ++p) {
     if (*p != '/') continue;
     *p = '\0';
-    if (mkdir(destino, 0755) && errno != EEXIST) {
+    if (ct_criar_pasta(destino) && errno != EEXIST) {
       *p = '/'; return ct_falha(erro, "Nao foi possivel criar diretorio: %s", strerror(errno));
     }
     *p = '/';
   }
-  if (mkdir(destino, 0755))
+  if (ct_criar_pasta(destino))
     return ct_falha(erro, "A pasta de saida deve ser nova: %s (%s).", destino, strerror(errno));
   return 0;
 }
 
 int ct_importar(const char *arquivo, CtCaptura *c, char *erro)
 {
-  FILE *f = fopen(arquivo, "r");
+  FILE *f = ct_abrir_arquivo(arquivo, "r");
   if (!f) return ct_falha(erro, "Nao foi possivel abrir CSV: %s", strerror(errno));
   *c = (CtCaptura){.numero=1};
   c->v = malloc(CT_MAX_PONTOS * sizeof *c->v);
@@ -121,13 +148,13 @@ int ct_exportar(const char *raiz, const CtCaptura *c, const CtConfig *cfg,
 {
   char pasta[CT_CAMINHO];
   int n=snprintf(pasta,sizeof pasta,"%s/captura_%03u",raiz,c->numero);
-  if (n<0 || (size_t)n>=sizeof pasta || mkdir(pasta,0755))
+  if (n<0 || (size_t)n>=sizeof pasta || ct_criar_pasta(pasta))
     return ct_falha(erro,"Nao foi possivel criar pasta da captura: %s",strerror(errno));
   FILE *f=novo_arquivo(pasta,"amostras.csv",erro);
   if (!f) return -1;
   fputs("tempo_s,tensao_v,corrente_a\n",f);
   for (size_t k=0;k<c->n;++k) {
-    if ((k%4096)==0 && ct_cancelado) { fclose(f); return ct_falha(erro,"Exportacao interrompida."); }
+    if ((k%4096)==0 && ct_interrompido()) { fclose(f); return ct_falha(erro,"Exportacao interrompida."); }
     fprintf(f,"%.17g,%.17g,%.17g\n",c->t0+(double)k*c->dt,c->v[k],c->i[k]);
   }
   if (fechar(f,erro)<0) return -1;
@@ -207,7 +234,7 @@ int ct_finalizar(const char *raiz, const CtConfig *cfg, unsigned concluidas,
     char caminho[CT_CAMINHO],linha[2048];
     int tam=snprintf(caminho,sizeof caminho,"%s/captura_%03u/eventos.csv",raiz,captura);
     if (tam<0 || (size_t)tam>=sizeof caminho) return ct_falha(erro,"Caminho longo.");
-    FILE *f=fopen(caminho,"r");
+    FILE *f=ct_abrir_arquivo(caminho,"r");
     if (!f) return ct_falha(erro,"Falha ao reler eventos.");
     if (!fgets(linha,sizeof linha,f)) { fclose(f); return ct_falha(erro,"Arquivo de eventos vazio."); }
     while (fgets(linha,sizeof linha,f)) {
@@ -261,6 +288,53 @@ int ct_finalizar(const char *raiz, const CtConfig *cfg, unsigned concluidas,
 
 int ct_graficos(const char *raiz, char *erro)
 {
+#ifdef _WIN32
+  const wchar_t *programa=_wgetenv(L"RTA_PLOT_EXE");
+  const wchar_t *script=_wgetenv(L"RTA_PLOT_SCRIPT");
+  if (!programa || !*programa)
+    return ct_falha(erro,"Gerador de graficos indisponivel. Inicie pelo aplicativo Windows.");
+  wchar_t comando[CT_CAMINHO*3], pasta[CT_CAMINHO];
+  if (!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,raiz,-1,pasta,CT_CAMINHO))
+    return ct_falha(erro,"Caminho de graficos invalido.");
+  int tamanho = script && *script ?
+    swprintf(comando,CT_CAMINHO*3,L"\"%ls\" \"%ls\" \"%ls\"",programa,script,pasta) :
+    swprintf(comando,CT_CAMINHO*3,L"\"%ls\" --render-plots \"%ls\"",programa,pasta);
+  if (tamanho<0 || tamanho>=CT_CAMINHO*3)
+    return ct_falha(erro,"Caminho de graficos muito longo.");
+  HANDLE grupo=CreateJobObjectA(NULL,NULL);
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION limite={0};
+  limite.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  if (!grupo || !SetInformationJobObject(grupo,JobObjectExtendedLimitInformation,&limite,sizeof limite)) {
+    if (grupo) CloseHandle(grupo);
+    return ct_falha(erro,"Nao foi possivel preparar o processo de graficos.");
+  }
+  STARTUPINFOW inicio={.cb=sizeof inicio};
+  PROCESS_INFORMATION processo={0};
+  if (!CreateProcessW(programa,comando,NULL,NULL,FALSE,CREATE_NO_WINDOW|CREATE_SUSPENDED,
+                      NULL,NULL,&inicio,&processo)) {
+    CloseHandle(grupo);
+    return ct_falha(erro,"Nao foi possivel iniciar os graficos.");
+  }
+  if (!AssignProcessToJobObject(grupo,processo.hProcess)) {
+    TerminateProcess(processo.hProcess,1);
+    CloseHandle(processo.hThread); CloseHandle(processo.hProcess); CloseHandle(grupo);
+    return ct_falha(erro,"Nao foi possivel acompanhar o processo de graficos.");
+  }
+  ResumeThread(processo.hThread); CloseHandle(processo.hThread);
+  while (WaitForSingleObject(processo.hProcess,50)==WAIT_TIMEOUT) {
+    if (ct_interrompido()) {
+      TerminateJobObject(grupo,1);
+      WaitForSingleObject(processo.hProcess,5000);
+      CloseHandle(processo.hProcess); CloseHandle(grupo);
+      return ct_falha(erro,"Graficos interrompidos; os CSVs foram preservados.");
+    }
+  }
+  DWORD status=1;
+  GetExitCodeProcess(processo.hProcess,&status);
+  CloseHandle(processo.hProcess); CloseHandle(grupo);
+  if (status) return ct_falha(erro,"Falha nos graficos; os CSVs foram preservados. Consulte o registro do aplicativo.");
+  return 0;
+#else
   char executavel[CT_CAMINHO],script[CT_CAMINHO],python[CT_CAMINHO];
   ssize_t n=readlink("/proc/self/exe",executavel,sizeof executavel-1);
   if (n<=0) return ct_falha(erro,"Nao foi possivel localizar o executavel.");
@@ -289,4 +363,5 @@ int ct_graficos(const char *raiz, char *erro)
   if (!WIFEXITED(status) || WEXITSTATUS(status))
     return ct_falha(erro,"Falha nos graficos; execute make dependencias. Os CSVs foram preservados.");
   return 0;
+#endif
 }

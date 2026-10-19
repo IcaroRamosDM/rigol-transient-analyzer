@@ -58,7 +58,7 @@ int ct_analisar(const CtCaptura *c, const CtConfig *cfg, CtAnalise *a, char *err
   double hold = cfg->permanencia_s / c->dt;
   for (size_t j = 0; j < a->n; ++j) {
     CtEvento *e = &a->eventos[j];
-    if (ct_cancelado) return ct_falha(erro, "Analise interrompida.");
+    if (ct_interrompido()) return ct_falha(erro, "Analise interrompida.");
     double k = (double)e->indice;
     if (pre_ini > k) { e->status = CT_SEM_ANTES; continue; }
     if (pos_fim > (double)(c->n - 1 - e->indice)) {

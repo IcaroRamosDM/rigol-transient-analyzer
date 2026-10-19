@@ -16,13 +16,16 @@ from .instrument import scope_query, read_scope, verify_profile
 from .storage import ResultStore
 from .commands import build_command
 from .models import MODELS, identify, selected_model
+from .runtime import FROZEN, results_dir, core_executable, hidden_process, process_environment
+from .process import KILL, signal_process, session_options
 
 class App:
     def __init__(self, root=ROOT, results=None, executable=None):
         self.root = Path(root).resolve()
-        self.results = Path(results or self.root / "resultados").resolve()
+        self.results = Path(results if results is not None else results_dir()).resolve()
         self.results.mkdir(exist_ok=True, parents=True)
-        self.executable = Path(executable or self.root / "build/carac_transientes")
+        self.executable = Path(executable or core_executable())
+        self.instance_id = uuid.uuid4().hex
         self.token = secrets.token_urlsafe(32)
         self.lock = threading.RLock()
         self.store = ResultStore(self.results)
@@ -34,7 +37,7 @@ class App:
 
     def snapshot(self):
         with self.lock:
-            return json.loads(json.dumps(dict(connection=self.connection, job=self.job, scope=self.scope, closed=self.closed)))
+            return json.loads(json.dumps(dict(instance=self.instance_id, connection=self.connection, job=self.job, scope=self.scope, closed=self.closed)))
 
     def connect(self, data):
         ip, port = address(data)
@@ -88,7 +91,8 @@ class App:
             if mode == "real":
                 cfg = settings(cfg | {"model": self.connection["model"]})
             if not self.executable.is_file():
-                raise Problem("O programa de medição não foi compilado. Execute make.", 503)
+                raise Problem("Componente de medição ausente. Reinstale o Rigol Transient Analyzer." if FROZEN else
+                              "O programa de medição não foi compilado. Execute make.", 503)
             run = "ui_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:8]
             self.job = dict(id=run, mode=mode, state="running", phase="preparando",
                             message="Preparando o ensaio", capture=0, total=cfg["captures"],
@@ -102,17 +106,21 @@ class App:
         process = None
         error = ""
         code = -1
+        cancel_file = self.results / (".cancel-" + run)
         try:
             with self.lock:
                 cancelled = self.job["cancel_requested"]
             if not cancelled:
-                env = os.environ.copy()
+                env = process_environment()
                 env["RTA_PROGRESS"] = "1"
+                if os.name == "nt":
+                    env["RTA_CANCEL_FILE"] = str(cancel_file)
                 process = subprocess.Popen(self._command(run, mode, cfg), cwd=self.root,
                                            env=env, stdout=subprocess.PIPE,
                                            stderr=subprocess.STDOUT, text=True,
                                            encoding="utf-8", errors="replace", bufsize=1,
-                                           start_new_session=True)
+                                           **hidden_process(), **session_options())
+                process.rta_cancel_file = cancel_file
                 with self.lock:
                     self.process = process
                     if self.job["cancel_requested"]:
@@ -136,8 +144,9 @@ class App:
             error = str(exc)
         finally:
             if process and process.poll() is None:
-                self._signal(process, signal.SIGKILL)
+                self._signal(process, KILL)
                 process.wait()
+            cancel_file.unlink(missing_ok=True)
             with self.lock:
                 cancelled = self.job["cancel_requested"]
             stop_warning = ""
@@ -170,10 +179,7 @@ class App:
 
     @staticmethod
     def _signal(process, number):
-        try:
-            os.killpg(process.pid, number)
-        except ProcessLookupError:
-            pass
+        signal_process(process, number)
 
     def cancel(self):
         with self.lock:
@@ -188,7 +194,7 @@ class App:
             return self.snapshot()["job"]
 
     def _cancel_watchdog(self, process):
-        for number in (signal.SIGTERM, signal.SIGKILL):
+        for number in (signal.SIGTERM, KILL):
             time.sleep(3)
             if process.poll() is not None:
                 return
@@ -216,7 +222,7 @@ class App:
                 # Reuse the C profile and its readback checks; never start a capture here.
                 command = self._command(None, "real", cfg, configuration_only=True)
                 result = subprocess.run(command, cwd=self.root, capture_output=True, text=True,
-                                        encoding="utf-8", errors="replace", timeout=25)
+                                        encoding="utf-8", errors="replace", timeout=25, **hidden_process())
                 if result.returncode:
                     raise Problem((result.stderr or result.stdout).strip()[-1000:] or
                                   "O Rigol não confirmou a configuração.", 502)

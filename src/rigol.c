@@ -1,30 +1,70 @@
 #include "carac.h"
-#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <limits.h>
 #include <math.h>
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+typedef WSAPOLLFD CtPoll;
+#define ct_poll WSAPoll
+#else
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
-#include <time.h>
 #include <unistd.h>
+typedef struct pollfd CtPoll;
+#define ct_poll poll
+#endif
+
+static int codigo_rede(void)
+{
+#ifdef _WIN32
+  return WSAGetLastError();
+#else
+  return errno;
+#endif
+}
+
+static bool repetir_rede(void)
+{
+  int codigo = codigo_rede();
+#ifdef _WIN32
+  return codigo == WSAEINTR || codigo == WSAEWOULDBLOCK;
+#else
+  return codigo == EINTR || codigo == EAGAIN || codigo == EWOULDBLOCK;
+#endif
+}
+
+static const char *erro_rede(void)
+{
+#ifdef _WIN32
+  static char mensagem[128];
+  snprintf(mensagem, sizeof mensagem, "Windows socket error %d", codigo_rede());
+  return mensagem;
+#else
+  return strerror(errno);
+#endif
+}
 
 static int esperar(CtRede *r, short eventos, double prazo, char *erro)
 {
   for (;;) {
-    if (ct_cancelado) return ct_falha(erro, "Operacao interrompida.");
+    if (ct_interrompido()) return ct_falha(erro, "Operacao interrompida.");
     double restante = prazo - ct_agora();
     if (restante <= 0) return ct_falha(erro, "Prazo de comunicacao esgotado.");
     int ms = restante * 1000 > INT_MAX ? INT_MAX : (int)ceil(restante * 1000);
-    struct pollfd p = {.fd = r->fd, .events = eventos};
-    int n = poll(&p, 1, ms);
-    if (n < 0 && errno == EINTR) continue;
-    if (n < 0) return ct_falha(erro, "poll: %s", strerror(errno));
-    if (!n) return ct_falha(erro, "Prazo de comunicacao esgotado.");
+    if (ms > 50) ms = 50;
+    CtPoll p = {.fd = r->fd, .events = eventos};
+    int n = ct_poll(&p, 1, ms);
+    if (n < 0 && repetir_rede()) continue;
+    if (n < 0) return ct_falha(erro, "poll: %s", erro_rede());
+    if (!n) continue;
     if (p.revents & eventos) return 0;
     return ct_falha(erro, "Conexao encerrada ou indisponivel.");
   }
@@ -36,9 +76,14 @@ static int enviar(CtRede *r, const void *dados, size_t total, double prazo, char
   size_t n = 0;
   while (n < total) {
     if (esperar(r, POLLOUT, prazo, erro) < 0) return -1;
-    ssize_t m = send(r->fd, p + n, total - n, MSG_NOSIGNAL);
-    if (m < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
-    if (m <= 0) return ct_falha(erro, "Falha ao enviar: %s", m ? strerror(errno) : "sem progresso");
+    int m = send(r->fd, (const char *)p + n, (int)(total - n),
+#ifdef _WIN32
+                 0);
+#else
+                 MSG_NOSIGNAL);
+#endif
+    if (m < 0 && repetir_rede()) continue;
+    if (m <= 0) return ct_falha(erro, "Falha ao enviar: %s", m ? erro_rede() : "sem progresso");
     n += (size_t)m;
   }
   return 0;
@@ -50,9 +95,9 @@ static int receber(CtRede *r, void *dados, size_t total, double prazo, char *err
   size_t n = 0;
   while (n < total) {
     if (esperar(r, POLLIN, prazo, erro) < 0) return -1;
-    ssize_t m = recv(r->fd, p + n, total - n, 0);
-    if (m < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
-    if (m <= 0) return ct_falha(erro, "Resposta incompleta: %s", m ? strerror(errno) : "conexao encerrada");
+    int m = recv(r->fd, (char *)p + n, (int)(total - n), 0);
+    if (m < 0 && repetir_rede()) continue;
+    if (m <= 0) return ct_falha(erro, "Resposta incompleta: %s", m ? erro_rede() : "conexao encerrada");
     n += (size_t)m;
   }
   return 0;
@@ -61,32 +106,62 @@ static int receber(CtRede *r, void *dados, size_t total, double prazo, char *err
 int ct_conectar(CtRede *r, const CtConfig *cfg, char *erro)
 {
   *r = (CtRede){.fd = -1, .timeout = cfg->timeout_s};
+#ifdef _WIN32
+  WSADATA dados;
+  if (WSAStartup(MAKEWORD(2, 2), &dados))
+    return ct_falha(erro, "Nao foi possivel iniciar a rede do Windows.");
+  r->rede_ativa = true;
+#endif
   struct sockaddr_in endereco = {.sin_family = AF_INET, .sin_port = htons((unsigned short)cfg->porta)};
-  if (inet_pton(AF_INET, cfg->ip, &endereco.sin_addr) != 1)
+  if (inet_pton(AF_INET, cfg->ip, &endereco.sin_addr) != 1) {
+    ct_desconectar(r);
     return ct_falha(erro, "Endereco IPv4 invalido: %s", cfg->ip);
-  r->fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (r->fd < 0) return ct_falha(erro, "socket: %s", strerror(errno));
-  int flags = fcntl(r->fd, F_GETFL, 0);
-  if (flags < 0 || fcntl(r->fd, F_SETFL, flags | O_NONBLOCK) < 0) goto falha;
+  }
+  r->fd = (intptr_t)socket(AF_INET, SOCK_STREAM, 0);
+  if (r->fd < 0) goto falha;
+#ifdef _WIN32
+  u_long nao_bloquear = 1;
+  if (ioctlsocket(r->fd, FIONBIO, &nao_bloquear)) goto falha;
+#else
+  int flags = fcntl((int)r->fd, F_GETFL, 0);
+  if (flags < 0 || fcntl((int)r->fd, F_SETFL, flags | O_NONBLOCK) < 0) goto falha;
+#endif
   if (connect(r->fd, (struct sockaddr *)&endereco, sizeof endereco) < 0) {
+#ifdef _WIN32
+    if (codigo_rede() != WSAEWOULDBLOCK && codigo_rede() != WSAEINPROGRESS) goto falha;
+#else
     if (errno != EINPROGRESS) goto falha;
+#endif
     if (esperar(r, POLLOUT, ct_agora() + r->timeout, erro) < 0) {
       ct_desconectar(r); return -1;
     }
-    int codigo = 0; socklen_t tamanho = sizeof codigo;
-    if (getsockopt(r->fd, SOL_SOCKET, SO_ERROR, &codigo, &tamanho) < 0) goto falha;
+    int codigo = 0;
+#ifdef _WIN32
+    int tamanho = sizeof codigo;
+    if (getsockopt(r->fd, SOL_SOCKET, SO_ERROR, (char *)&codigo, &tamanho) < 0) goto falha;
+    if (codigo) { WSASetLastError(codigo); goto falha; }
+#else
+    socklen_t tamanho = sizeof codigo;
+    if (getsockopt((int)r->fd, SOL_SOCKET, SO_ERROR, &codigo, &tamanho) < 0) goto falha;
     if (codigo) { errno = codigo; goto falha; }
+#endif
   }
   return 0;
 falha:
-  ct_falha(erro, "Conexao: %s", strerror(errno));
+  ct_falha(erro, "Conexao: %s", erro_rede());
   ct_desconectar(r);
   return -1;
 }
 
 void ct_desconectar(CtRede *r)
 {
-  if (r->fd >= 0) close(r->fd);
+#ifdef _WIN32
+  if (r->fd >= 0) closesocket(r->fd);
+  if (r->rede_ativa) WSACleanup();
+  r->rede_ativa = false;
+#else
+  if (r->fd >= 0) close((int)r->fd);
+#endif
   r->fd = -1;
 }
 
@@ -202,18 +277,17 @@ int ct_nova(CtRede *r, const CtConfig *cfg, char *erro)
 {
   char estado[128];
   double prazo = ct_agora() + cfg->timeout_s;
-  struct timespec pausa = {.tv_nsec=20000000};
   /* Primeiro comprova que saiu de STOP, evitando aceitar o STOP antigo. */
   if (ct_comando(r, ":RUN", erro) < 0) return -1;
   do {
     if (ct_agora() >= prazo) return ct_falha(erro, "Rigol nao iniciou a aquisicao.");
     if (ct_consultar(r, ":TRIG:STAT?", estado, sizeof estado, erro) < 0) return -1;
     if (strcmp(estado, "STOP")) break;
-    nanosleep(&pausa, NULL);
-  } while (!ct_cancelado);
-  if (ct_cancelado) return ct_falha(erro, "Captura interrompida.");
+    ct_pausa();
+  } while (!ct_interrompido());
+  if (ct_interrompido()) return ct_falha(erro, "Captura interrompida.");
   if (ct_comando(r, ":SING", erro) < 0) return -1;
-  nanosleep(&pausa, NULL);
+  ct_pausa();
   for (;;) {
     if (ct_agora() >= prazo) return ct_falha(erro, "Nenhum disparo concluido dentro do prazo.");
     if (ct_consultar(r, ":TRIG:STAT?", estado, sizeof estado, erro) < 0) return -1;
@@ -221,7 +295,7 @@ int ct_nova(CtRede *r, const CtConfig *cfg, char *erro)
     if (strcmp(estado,"WAIT") && strcmp(estado,"RUN") &&
         strcmp(estado,"TD") && strcmp(estado,"AUTO"))
       return ct_falha(erro, "Estado de disparo inesperado: %s", estado);
-    nanosleep(&pausa, NULL);
+    ct_pausa();
   }
   if (ct_consultar(r, ":TRIG:SWE?", estado, sizeof estado, erro) < 0) return -1;
   if (strcmp(estado,"SING")) return ct_falha(erro, "Disparo unico nao foi confirmado.");

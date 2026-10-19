@@ -6,8 +6,11 @@ FONTES = src/main.c src/comum.c src/analise.c src/rigol.c src/modelos.c src/arqu
 OBJETOS = $(FONTES:src/%.c=build/%.o)
 DEPS = $(OBJETOS:.o=.d)
 PYTHON ?= python3
+MINGW_CC ?= x86_64-w64-mingw32-gcc
+MINGW_WINDRES ?= x86_64-w64-mingw32-windres
+WINDOWS_FLAGS = -municode -std=c17 -O2 -Wall -Wextra -Wpedantic -Werror -fno-builtin -D__USE_MINGW_ANSI_STDIO=1 -D_WIN32_WINNT=0x0A00 -Iinclude -static
 
-.PHONY: all antigos test sanitize dependencias graficos clean interface
+.PHONY: all antigos test sanitize dependencias graficos clean interface windows-core
 
 all: build/carac_transientes
 
@@ -19,6 +22,15 @@ build/%.o: src/%.c include/carac.h | build
 
 build/carac_transientes: $(OBJETOS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+windows-core: build/windows/carac_transientes.exe
+
+build/windows/core.res: packaging/windows/core.rc packaging/windows/app.manifest | build
+	mkdir -p build/windows
+	$(MINGW_WINDRES) -Ipackaging/windows packaging/windows/core.rc -O coff -o $@
+
+build/windows/carac_transientes.exe: $(FONTES) include/carac.h include/rigol_models.def build/windows/core.res
+	$(MINGW_CC) $(WINDOWS_FLAGS) $(FONTES) build/windows/core.res -lws2_32 -lm -o $@
 
 antigos: build/receber_onda build/identificar_rigol build/consultar_rigol build/parametros_onda
 

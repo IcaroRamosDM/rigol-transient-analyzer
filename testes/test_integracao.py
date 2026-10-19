@@ -10,6 +10,9 @@ import tempfile
 import threading
 import time
 import unittest
+import sys
+import importlib.util
+from unittest import mock
 
 RAIZ = Path(__file__).resolve().parents[1]
 BIN = Path(os.environ.get("CT_BIN", RAIZ / "build/carac_transientes"))
@@ -265,10 +268,12 @@ class Integracao(unittest.TestCase):
         self.assertNotEqual(r.returncode,0)
 
     def test_graficos_se_dependencias_instaladas(self):
-        runtime=RAIZ/".venv/bin/python"
-        if not runtime.exists():
+        runtime=Path(sys.executable) if os.name == "nt" else RAIZ/".venv/bin/python"
+        if not runtime.exists() or (os.name == "nt" and not importlib.util.find_spec("matplotlib")):
             self.skipTest("Execute make dependencias para testar PNGs")
-        r=self.rodar("--simular","--pontos","1000","--graficos","--saida",self.pasta/"graficos")
+        from interface.rta.runtime import process_environment
+        with mock.patch.dict(os.environ, process_environment()):
+            r=self.rodar("--simular","--pontos","1000","--graficos","--saida",self.pasta/"graficos")
         self.assertEqual(r.returncode,0,r.stderr)
         pngs=list((self.pasta/"graficos/captura_001/graficos").glob("*.png"))
         self.assertEqual(len(pngs),8)

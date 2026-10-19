@@ -14,7 +14,8 @@ from .timebase import build_timebase
 
 def _catalog():
     result = {}
-    source = Path(__file__).resolve().parents[2] / "include/rigol_models.def"
+    from .runtime import ROOT
+    source = ROOT / "include/rigol_models.def"
     for line in source.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("//"):
             continue

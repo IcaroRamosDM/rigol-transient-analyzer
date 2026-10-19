@@ -10,6 +10,7 @@ import threading
 from .common import DEFAULTS, ACTIVE, Problem
 from .timebase import TIMEBASE
 from .models import MODELS
+from .runtime import VERSION, FROZEN
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "RigolTransientAnalyzer/1"
@@ -57,7 +58,7 @@ class Handler(BaseHTTPRequestHandler):
             app = self.server.app
             if url.path == "/api/bootstrap":
                 self.json(dict(app="Rigol Transient Analyzer", token=app.token,
-                               defaults=DEFAULTS, models=list(MODELS.values()), timebase=TIMEBASE, **app.snapshot()))
+                               version=VERSION, packaged=FROZEN, defaults=DEFAULTS, models=list(MODELS.values()), timebase=TIMEBASE, **app.snapshot()))
             elif url.path == "/api/status":
                 self.json(app.snapshot())
             elif url.path == "/api/history":

@@ -110,6 +110,7 @@ async function init(){
   try{
     const data=await api("/api/bootstrap");
     S.token=data.token;S.defaults=data.defaults;S.connection=data.connection;S.job=data.job;S.scope=data.scope;S.closed=data.closed;
+    $("appVersion").textContent=data.version ? "· v"+data.version : "";
     configureModels(data.models);
     configureTimebase(data.timebase);
     fillConfig(data.defaults);S.ready=true;controls();renderJob();

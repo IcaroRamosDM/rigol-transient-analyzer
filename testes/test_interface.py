@@ -189,8 +189,14 @@ class InterfaceTests(InterfaceHarness, unittest.TestCase):
                                    (job["id"], "captura_001", "../../README.md")]:
             with self.subTest(run=run, capture=capture), self.assertRaises(ui.Problem):
                 self.app.download(run, capture, name)
+    def test_symlinks_are_rejected(self):
         outside = self.path / "outside"; outside.mkdir()
-        (self.app.results / "escape").symlink_to(outside, target_is_directory=True)
+        try:
+            (self.app.results / "escape").symlink_to(outside, target_is_directory=True)
+        except OSError as error:
+            if os.name == "nt" and getattr(error, "winerror", None) == 1314:
+                self.skipTest("Windows symlink privilege is unavailable.")
+            raise
         with self.assertRaises(ui.Problem):
             self.app.run_path("escape")
 
@@ -202,6 +208,7 @@ class InterfaceTests(InterfaceHarness, unittest.TestCase):
                 self.app.start(dict(mode="demo", settings=data))
         self.assertIsNone(self.app.job)
 
+    @unittest.skipIf(os.name == "nt", "POSIX script fixture; native cancellation is tested against the protocol fixture.")
     def test_cancellation_and_exclusive_job(self):
         script = self.path / "slow_engine"
         script.write_text("#!/usr/bin/env python3\nimport time\nprint('@RTA aguardando_disparo 1 1',flush=True)\ntime.sleep(30)\n")

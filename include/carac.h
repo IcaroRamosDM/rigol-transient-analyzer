@@ -3,6 +3,8 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
 #define CT_MAX_PONTOS 1000000u
 #define CT_ERRO 512
@@ -52,7 +54,7 @@ typedef struct {
 } CtAnalise;
 
 typedef struct { double minimo, maximo, media; } CtResumo;
-typedef struct { int fd; double timeout; } CtRede;
+typedef struct { intptr_t fd; double timeout; bool rede_ativa; } CtRede;
 typedef struct {
   const char *nome, *serie;
   unsigned canais, banda_mhz;
@@ -67,6 +69,12 @@ int ct_validar_modelo(const CtConfig *cfg, const char *id, char *erro);
 extern volatile sig_atomic_t ct_cancelado;
 int ct_falha(char *erro, const char *formato, ...);
 double ct_agora(void);
+bool ct_interrompido(void);
+void ct_ignorar_cancelamento(void);
+void ct_pausa(void);
+int ct_criar_pasta(const char *caminho);
+FILE *ct_abrir_arquivo(const char *caminho, const char *modo);
+char *ct_pasta_atual(char *destino, size_t tamanho);
 void ct_instante(char *texto, size_t tamanho);
 void ct_liberar(CtCaptura *c);
 void ct_liberar_analise(CtAnalise *a);
