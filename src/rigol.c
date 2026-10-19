@@ -240,40 +240,46 @@ int ct_configurar(CtRede *r, const CtConfig *cfg, char *erro)
 {
   char comando[512], resposta[128];
   if (ct_comando(r, ":STOP", erro) < 0) return -1;
-  unsigned canais[] = {cfg->ch_v, cfg->ch_i};
-  unsigned sondas[] = {cfg->sonda_v, cfg->sonda_i};
-  double escalas[] = {cfg->escala_v, cfg->escala_shunt};
-  double offsets[] = {-cfg->nominal_v, 0};
-  for (size_t k = 0; k < 2; ++k) {
-    unsigned ch = canais[k];
-    snprintf(comando, sizeof comando,
-      ":CHAN%u:DISP ON;:CHAN%u:PROB %u;:CHAN%u:COUP DC;:CHAN%u:UNIT VOLT;"
+  CtCanal padrao[]={{cfg->ch_v,cfg->sonda_v,cfg->escala_v,cfg->nominal_v,"DC",cfg->banda},
+                    {cfg->ch_i,cfg->sonda_i,cfg->escala_shunt,0,"DC",cfg->banda}};
+  const CtCanal *canais=cfg->n_canais?cfg->canais:padrao;
+  unsigned total=cfg->n_canais?cfg->n_canais:2;
+  for (unsigned k=0;k<total;++k) {
+    const CtCanal *c=&canais[k]; unsigned ch=c->numero;
+    snprintf(comando,sizeof comando,
+      ":CHAN%u:DISP ON;:CHAN%u:PROB %u;:CHAN%u:COUP %s;:CHAN%u:UNIT VOLT;"
       ":CHAN%u:SCAL %.12g;:CHAN%u:OFFS %.12g;:CHAN%u:INV OFF;:CHAN%u:BWL %s",
-      ch,ch,sondas[k],ch,ch,ch,escalas[k],ch,offsets[k],ch,ch,cfg->banda);
-    if (ct_comando(r, comando, erro) < 0) return -1;
+      ch,ch,c->sonda,ch,c->acoplamento,ch,ch,c->escala,ch,-c->centro,ch,ch,c->banda);
+    if(ct_comando(r,comando,erro)<0) return -1;
   }
   snprintf(comando, sizeof comando,
     ":TIM:MODE MAIN;:TIM:MAIN:SCAL %.12g;:TIM:MAIN:OFFS 0;:ACQ:TYPE NORM;"
     ":ACQ:MDEP %zu;:TRIG:MODE EDGE;:TRIG:COUP DC;:TRIG:EDGE:SOUR CHAN%u;"
-    ":TRIG:EDGE:SLOP POS;:TRIG:EDGE:LEV %.12g;:TRIG:SWE NORM",
-    cfg->tempo_div,cfg->pontos,cfg->ch_i,(cfg->baixo_a+cfg->alto_a)*0.5*cfg->resistor);
+    ":TRIG:EDGE:SLOP %s;:TRIG:EDGE:LEV %.12g;:TRIG:SWE NORM",
+    cfg->tempo_div,cfg->pontos,cfg->n_canais?cfg->disparo_canal:cfg->ch_i,
+    cfg->n_canais?cfg->disparo_borda:"POS",
+    cfg->n_canais?cfg->disparo_v:(cfg->baixo_a+cfg->alto_a)*0.5*cfg->resistor);
   if (ct_comando(r, comando, erro) < 0 ||
       ct_consultar(r, "*OPC;*OPC?", resposta, sizeof resposta, erro) < 0) return -1;
   if (strcmp(resposta, "1")) return ct_falha(erro, "Configuracao nao concluida.");
-  for (size_t k = 0; k < 2; ++k) {
-    snprintf(comando, sizeof comando, ":CHAN%u:PROB?", canais[k]);
-    if (confirmar_numero(r, comando, sondas[k], erro) < 0) return -1;
-    snprintf(comando, sizeof comando, ":CHAN%u:SCAL?", canais[k]);
-    if (confirmar_numero(r, comando, escalas[k], erro) < 0) return -1;
-    snprintf(comando, sizeof comando, ":CHAN%u:OFFS?", canais[k]);
-    if (confirmar_numero(r, comando, offsets[k], erro) < 0) return -1;
+  for (unsigned k=0;k<total;++k) {
+    const CtCanal *c=&canais[k];
+    snprintf(comando,sizeof comando,":CHAN%u:PROB?",c->numero);
+    if(confirmar_numero(r,comando,c->sonda,erro)<0) return -1;
+    snprintf(comando,sizeof comando,":CHAN%u:SCAL?",c->numero);
+    if(confirmar_numero(r,comando,c->escala,erro)<0) return -1;
+    snprintf(comando,sizeof comando,":CHAN%u:OFFS?",c->numero);
+    if(confirmar_numero(r,comando,-c->centro,erro)<0) return -1;
+    snprintf(comando,sizeof comando,":CHAN%u:COUP?",c->numero);
+    if(ct_consultar(r,comando,resposta,sizeof resposta,erro)<0) return -1;
+    if(strcmp(resposta,c->acoplamento)) return ct_falha(erro,"Acoplamento nao confirmado.");
   }
   if (confirmar_numero(r, ":TIM:MAIN:SCAL?", cfg->tempo_div, erro) < 0 ||
       confirmar_numero(r, ":ACQ:MDEP?", (double)cfg->pontos, erro) < 0) return -1;
   return 0;
 }
 
-int ct_nova(CtRede *r, const CtConfig *cfg, char *erro)
+static int nova_interna(CtRede *r, const CtConfig *cfg, char *erro)
 {
   char estado[128];
   double prazo = ct_agora() + cfg->timeout_s;
@@ -302,6 +308,25 @@ int ct_nova(CtRede *r, const CtConfig *cfg, char *erro)
   return 0;
 }
 
+int ct_nova(CtRede *r, const CtConfig *cfg, char *erro)
+{
+  char original[32]="",comando[64],limpeza[CT_ERRO];
+  if (!cfg->configurar) {
+    if(ct_consultar(r,":TRIG:SWE?",original,sizeof original,erro)<0) return -1;
+    if(strcmp(original,"AUTO") && strcmp(original,"NORM") && strcmp(original,"SING"))
+      return ct_falha(erro,"Modo de disparo desconhecido.");
+  }
+  int resultado=nova_interna(r,cfg,erro);
+  if (*original) {
+    if(resultado<0) ct_ignorar_cancelamento();
+    if(resultado<0) (void)ct_comando(r,":STOP",limpeza);
+    snprintf(comando,sizeof comando,":TRIG:SWE %s",original);
+    if(ct_comando(r,comando,limpeza)<0 && !resultado)
+      return ct_falha(erro,"Falha ao restaurar modo de disparo: %s",limpeza);
+  }
+  return resultado;
+}
+
 static int bloco(CtRede *r, unsigned char *dados, size_t esperado, char *erro)
 {
   unsigned char prefixo[2], digitos[9], fim;
@@ -322,60 +347,68 @@ static int bloco(CtRede *r, unsigned char *dados, size_t esperado, char *erro)
   return 0;
 }
 
-int ct_receber(CtRede *r, const CtConfig *cfg, CtCaptura *c, char *erro)
+int ct_ler_canal(CtRede *r, const CtConfig *cfg, unsigned canal,
+                 CtPreambulo *p, double **dados, char *erro)
 {
-  char comando[256], texto[512];
-  unsigned canais[] = {cfg->ch_v, cfg->ch_i};
-  unsigned char *bytes = malloc(200000);
-  if (!bytes) return ct_falha(erro, "Sem memoria para transferencia.");
-  if (ct_consultar(r, ":TRIG:STAT?", texto, sizeof texto, erro) < 0) goto falha;
-  if (strcmp(texto,"STOP")) { ct_falha(erro,"Leitura RAW exige captura parada."); goto falha; }
-  for (size_t ch = 0; ch < 2; ++ch) {
-    snprintf(comando, sizeof comando,
-      ":WAV:SOUR CHAN%u;:WAV:MODE RAW;:WAV:FORM WORD;:WAV:STAR 1;:WAV:STOP %zu;:WAV:PRE?",
-      canais[ch],cfg->pontos);
-    if (ct_consultar(r, comando, texto, sizeof texto, erro) < 0 ||
-        ct_preambulo(texto, &c->pre[ch], erro) < 0) goto falha;
-    CtPreambulo *p = &c->pre[ch];
-    if (p->pontos != cfg->pontos) {
-      ct_falha(erro, "Memoria tem %zu pontos; solicitados %zu. Ajuste --pontos.",p->pontos,cfg->pontos);
-      goto falha;
-    }
-    if (!ch) {
-      c->n = p->pontos; c->dt = p->dx; c->t0 = p->x0 - p->xr*p->dx;
-      c->v = malloc(c->n * sizeof *c->v);
-      c->i = malloc(c->n * sizeof *c->i);
-      if (!c->v || !c->i) { ct_falha(erro,"Sem memoria para canais."); goto falha; }
-    } else if (p->dx != c->dt || p->x0-p->xr*p->dx != c->t0) {
-      ct_falha(erro,"Canais possuem bases de tempo diferentes."); goto falha;
-    }
-    for (size_t inicio = 0; inicio < c->n;) {
-      size_t quantidade = c->n-inicio;
-      if (quantidade > 100000) quantidade = 100000;
-      snprintf(comando, sizeof comando, ":WAV:STAR %zu;:WAV:STOP %zu;:WAV:DATA?",
-               inicio+1,inicio+quantidade);
-      if (ct_comando(r,comando,erro)<0 || bloco(r,bytes,quantidade*2,erro)<0) goto falha;
-      for (size_t k = 0; k < quantidade; ++k) {
-        unsigned codigo = (unsigned)bytes[2*k] | ((unsigned)bytes[2*k+1]<<8);
-        if (codigo == 0 || codigo == 65535) {
-          ct_falha(erro, "CH%u saturou no ponto %zu; confira escala, offset e conexoes.",
-                   canais[ch], inicio+k);
-          goto falha;
-        }
-        double valor = ((double)codigo-p->y0-p->yr)*p->dy;
-        if (ch) valor /= cfg->resistor;
-        if (!isfinite(valor)) { ct_falha(erro,"Amostra convertida invalida."); goto falha; }
-        (ch ? c->i : c->v)[inicio+k] = valor;
+  char comando[256],texto[512];
+  *dados=NULL;
+  snprintf(comando,sizeof comando,":CHAN%u:DISP?",canal);
+  if(ct_consultar(r,comando,texto,sizeof texto,erro)<0) return -1;
+  if(strcmp(texto,"1") && strcmp(texto,"ON"))
+    return ct_falha(erro,"CH%u esta oculto; habilite o canal antes de capturar.",canal);
+  snprintf(comando,sizeof comando,
+    ":WAV:SOUR CHAN%u;:WAV:MODE RAW;:WAV:FORM WORD;:WAV:STAR 1;:WAV:STOP %zu;:WAV:PRE?",
+    canal,cfg->pontos);
+  if(ct_consultar(r,comando,texto,sizeof texto,erro)<0 || ct_preambulo(texto,p,erro)<0) return -1;
+  if(cfg->configurar && p->pontos!=cfg->pontos)
+    return ct_falha(erro,"Memoria tem %zu pontos; solicitados %zu. Ajuste --pontos.",p->pontos,cfg->pontos);
+  unsigned char *bytes=malloc(200000);
+  double *valores=malloc(p->pontos*sizeof *valores);
+  if(!bytes || !valores) { free(bytes); free(valores); return ct_falha(erro,"Sem memoria para transferencia."); }
+  for(size_t inicio=0;inicio<p->pontos;) {
+    size_t n=p->pontos-inicio; if(n>100000) n=100000;
+    snprintf(comando,sizeof comando,":WAV:STAR %zu;:WAV:STOP %zu;:WAV:DATA?",inicio+1,inicio+n);
+    if(ct_comando(r,comando,erro)<0 || bloco(r,bytes,n*2,erro)<0) goto falha;
+    for(size_t k=0;k<n;++k) {
+      unsigned codigo=(unsigned)bytes[2*k] | ((unsigned)bytes[2*k+1]<<8);
+      if(codigo==0 || codigo==65535) {
+        ct_falha(erro,"CH%u saturou no ponto %zu; confira escala, offset e conexoes.",canal,inicio+k);
+        goto falha;
       }
-      inicio += quantidade;
+      valores[inicio+k]=((double)codigo-p->y0-p->yr)*p->dy;
+      if(!isfinite(valores[inicio+k])) { ct_falha(erro,"Amostra convertida invalida."); goto falha; }
     }
-    printf("CH%u: %zu pontos recebidos.\n",canais[ch],c->n);
+    inicio+=n;
   }
-  if (ct_consultar(r,":TRIG:STAT?",texto,sizeof texto,erro)<0) goto falha;
-  if (strcmp(texto,"STOP")) { ct_falha(erro,"Captura mudou durante a leitura."); goto falha; }
-  free(bytes);
+  free(bytes); *dados=valores;
+  printf("CH%u: %zu pontos recebidos.\n",canal,p->pontos);
   return 0;
 falha:
-  free(bytes);
-  return -1;
+  free(bytes); free(valores); return -1;
+}
+
+int ct_receber(CtRede *r, const CtConfig *cfg, CtCaptura *c, char *erro)
+{
+  char texto[128];
+  if(ct_consultar(r,":TRIG:STAT?",texto,sizeof texto,erro)<0) return -1;
+  if(strcmp(texto,"STOP")) return ct_falha(erro,"Leitura RAW exige captura parada.");
+  if(!cfg->configurar) {
+    unsigned canais[]={cfg->ch_v,cfg->ch_i};char consulta[64];
+    for(unsigned k=0;k<2;++k) {
+      snprintf(consulta,sizeof consulta,":CHAN%u:COUP?",canais[k]);
+      if(ct_consultar(r,consulta,texto,sizeof texto,erro)<0) return -1;
+      if(strcmp(texto,"DC")) return ct_falha(erro,"Transientes requer acoplamento DC no CH%u.",canais[k]);
+    }
+  }
+  if(ct_ler_canal(r,cfg,cfg->ch_v,&c->pre[0],&c->v,erro)<0 ||
+     ct_ler_canal(r,cfg,cfg->ch_i,&c->pre[1],&c->i,erro)<0) return -1;
+  c->n=c->pre[0].pontos; c->dt=c->pre[0].dx;
+  c->t0=c->pre[0].x0-c->pre[0].xr*c->dt;
+  if(c->pre[1].pontos!=c->n || c->pre[1].dx!=c->dt ||
+     c->pre[1].x0-c->pre[1].xr*c->dt!=c->t0)
+    return ct_falha(erro,"Canais possuem bases de tempo diferentes.");
+  for(size_t k=0;k<c->n;++k) c->i[k]/=cfg->resistor;
+  if(ct_consultar(r,":TRIG:STAT?",texto,sizeof texto,erro)<0) return -1;
+  if(strcmp(texto,"STOP")) return ct_falha(erro,"Captura mudou durante a leitura.");
+  return 0;
 }

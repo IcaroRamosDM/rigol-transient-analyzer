@@ -33,6 +33,8 @@ def indices_envelope(v, i, limite=8000):
 def desenhar(pasta, limite):
     meta = json.loads((pasta / "metadados.json").read_text(encoding="utf-8"))
     dados = np.loadtxt(pasta / "amostras.csv", delimiter=",", skiprows=1, ndmin=2)
+    if meta.get("tipo_medicao") == "sinais":
+        return desenhar_sinais(pasta, meta, dados, limite)
     if dados.shape[1] != 3 or len(dados) != meta["pontos"] or not np.isfinite(dados).all():
         raise ValueError(f"Dados inconsistentes em {pasta}")
     t, v, i = dados.T
@@ -105,6 +107,32 @@ def desenhar(pasta, limite):
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Gráficos: {destino} ({len(arquivos)} imagens)")
     return len(arquivos)
+
+
+def desenhar_sinais(pasta, meta, dados, limite):
+    channels=meta["canais"]
+    if dados.shape != (meta["pontos"],len(channels)+1) or not np.isfinite(dados).all():
+        raise ValueError("Invalid signal samples")
+    target=pasta/"graficos";target.mkdir(exist_ok=True)
+    indices={0,len(dados)-1}
+    count=max(1,(limite-2)//(2*len(channels)))
+    bounds=np.linspace(0,len(dados),count+1,dtype=int)
+    if len(dados)<=limite:indices=range(len(dados))
+    else:
+        for a,b in zip(bounds[:-1],bounds[1:]):
+            for ch in range(1,len(channels)+1):
+                indices.add(a+int(np.argmin(dados[a:b,ch])))
+                indices.add(a+int(np.argmax(dados[a:b,ch])))
+    idx=np.array(sorted(indices))
+    fig,axes=plt.subplots(len(channels),1,sharex=True,squeeze=False,figsize=(11,3*len(channels)),layout="constrained")
+    for i,ch in enumerate(channels):
+        ax=axes[i,0];ax.plot(dados[idx,0]*1e3,dados[idx,i+1],linewidth=.8,color=["#c77c00","#087f8c","#9353a2","#3465b4"][i])
+        ax.set_ylabel("CH"+str(ch["numero"])+" (V)");ax.grid(alpha=.25)
+    axes[-1,0].set_xlabel("Time relative to trigger (ms)")
+    fig.suptitle(meta["origem"]+" · "+meta["instante_utc"])
+    fig.savefig(target/"visao_geral.png",dpi=170);plt.close(fig)
+    (target/"graficos.json").write_text(json.dumps(dict(origem=meta["origem"],arquivos=["visao_geral.png"],calculos="Full record; visual reduction preserves all channel extrema"))+"\n",encoding="utf-8")
+    return 1
 
 
 def main():

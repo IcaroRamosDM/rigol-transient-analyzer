@@ -1080,3 +1080,7 @@ td small{
 .progress-panel.failed #jobMessage { color: #9f302a; }
 .progress-panel.failed #jobRecovery { color: var(--ink); line-height: 1.6; }
 .progress-panel.failed #jobReview { margin: 0 0 12px; }
+
+.channel-card{border:1px solid #d7e4ea;border-radius:9px;padding:12px;margin:14px 0}.channel-card legend{padding:0 6px;font-size:14px}.channel-card label{display:flex;flex-direction:column;gap:7px;margin:0}.channel-card .field-pair{row-gap:12px}.channel-card input,.channel-card select{min-width:0;width:100%}.signal-choices{display:flex;gap:16px;flex-wrap:wrap;margin:15px 0}.signal-choices label{display:flex;gap:7px;align-items:center}.signal-choices input{width:auto}.trigger-editor{border-top:1px solid #e1e9ee;margin-top:15px;padding-top:12px}.trigger-editor h3{font-size:14px;margin:0 0 10px}#readIntoForm{margin:8px 0}#signalResults td,#signalResults th{white-space:nowrap}.setup-panel{min-width:0}.field-pair>*{min-width:0}
+
+.measurement-actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}.measurement-actions .button{flex:1;padding:10px;white-space:normal}.setup-panel .panel-heading{margin-bottom:15px}

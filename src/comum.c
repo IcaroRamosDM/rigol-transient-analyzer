@@ -1,4 +1,5 @@
 #include "carac.h"
+#include <string.h>
 #include <math.h>
 #include <errno.h>
 #include <stdarg.h>
@@ -195,8 +196,8 @@ int ct_validar_config(const CtConfig *c, char *erro)
       c->pontos != 100000 && c->pontos != 1000000)
     return ct_falha(erro, "Pontos permitidos: 1000, 10000, 100000, 1000000.");
   if (!c->capturas || c->capturas > 100 || !c->porta || c->porta > 65535 ||
-      c->ch_v < 1 || c->ch_v > 2 || c->ch_i < 1 || c->ch_i > 2 || c->ch_v == c->ch_i)
-    return ct_falha(erro, "Capturas: 1..100; porta: 1..65535; canais 1 e 2 distintos.");
+      c->ch_v < 1 || c->ch_v > 4 || c->ch_i < 1 || c->ch_i > 4 || c->ch_v == c->ch_i)
+    return ct_falha(erro, "Capturas: 1..100; porta: 1..65535; canais 1..4 distintos.");
   if ((c->sonda_v != 1 && c->sonda_v != 10) ||
       (c->sonda_i != 1 && c->sonda_i != 10))
     return ct_falha(erro, "Fator de sonda permitido: 1 ou 10.");
@@ -204,5 +205,30 @@ int ct_validar_config(const CtConfig *c, char *erro)
     return ct_falha(erro, "Memoria existente/arquivo nao representam capturas novas repetidas.");
   if ((c->simular && (c->existente || c->entrada)) || (c->existente && c->entrada))
     return ct_falha(erro, "Escolha apenas um modo: instrumento, existente, arquivo ou simulacao.");
+  if (c->n_canais>4 || (c->sinais && !c->n_canais) ||
+      (c->sinais && c->entrada))
+    return ct_falha(erro,"Modo sinais requer 1..4 canais e nao importa CSV de transientes.");
+  for (unsigned k=0;k<c->n_canais;++k) {
+    const CtCanal *ch=&c->canais[k];
+    if (ch->numero<1 || ch->numero>4 || (ch->sonda!=1 && ch->sonda!=10) ||
+        !isfinite(ch->escala) || ch->escala<=0 || !isfinite(ch->centro))
+      return ct_falha(erro,"Configuracao de canal invalida.");
+    for (unsigned j=0;j<k;++j) if(c->canais[j].numero==ch->numero)
+      return ct_falha(erro,"Canais repetidos.");
+  }
+  if (!c->sinais && c->n_canais) {
+    if(c->n_canais!=2 || !((c->canais[0].numero==c->ch_v && c->canais[1].numero==c->ch_i) ||
+       (c->canais[1].numero==c->ch_v && c->canais[0].numero==c->ch_i)) ||
+       strcmp(c->canais[0].acoplamento,"DC") || strcmp(c->canais[1].acoplamento,"DC"))
+      return ct_falha(erro,"Transientes requer os dois canais de tensao/corrente em DC.");
+  }
+  if(c->sinais || c->n_canais) {
+    bool encontrou=false;
+    for(unsigned k=0;k<c->n_canais;++k) if(c->canais[k].numero==c->disparo_canal) encontrou=true;
+    if(!encontrou) return ct_falha(erro,"Canal de disparo fora dos canais selecionados.");
+  }
+  if (c->disparo_canal>4 || !isfinite(c->disparo_v) ||
+      (c->disparo_borda && strcmp(c->disparo_borda,"POS") && strcmp(c->disparo_borda,"NEG")))
+    return ct_falha(erro,"Disparo invalido.");
   return 0;
 }

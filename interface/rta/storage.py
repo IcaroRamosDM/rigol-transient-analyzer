@@ -41,9 +41,10 @@ class ResultStore:
                 continue
             try:
                 meta = read_json(self.inside(path, folder.name + "/metadados.json"))
-                with self.inside(path, folder.name + "/eventos.csv").open(newline="") as file:
+                events = []
+                with self.inside(path, folder.name + ("/medidas.csv" if meta.get("tipo_medicao") == "sinais" else "/eventos.csv")).open(newline="") as file:
                     events = []
-                    for row in csv.DictReader(file):
+                    for row in (() if meta.get("tipo_medicao") == "sinais" else csv.DictReader(file)):
                         event = {key: value if key in ("direcao", "status") else
                                  (float(value) if value else None) for key, value in row.items()}
                         if any(isinstance(value, float) and not math.isfinite(value)
@@ -78,7 +79,8 @@ class ResultStore:
                 first = captures[0]["metadata"]
                 history.append(dict(id=path.name, origin=first["origem"],
                                     date=first["instante_utc"], captures=len(captures),
-                                    valid=sum(c["metadata"]["eventos_validos"] for c in captures),
+                                    valid=sum(c["metadata"].get("eventos_validos", 0) for c in captures),
+                                    measurement=first.get("tipo_medicao", "transientes"),
                                     complete=detail["execution"].get("concluido") is True))
             except (OSError, ValueError, KeyError, Problem):
                 continue
@@ -91,17 +93,19 @@ class ResultStore:
         key = (str(path), path.stat().st_mtime_ns, path.stat().st_size)
         with self.cache_lock:
             if key in self.cache:
-                columns = self.cache.pop(key)
-                self.cache[key] = columns
+                headers, columns = self.cache.pop(key)
+                self.cache[key] = (headers, columns)
             else:
-                columns = [array("d"), array("d"), array("d")]
                 with path.open(newline="") as file:
                     reader = csv.reader(file)
-                    if next(reader, None) != ["tempo_s", "tensao_v", "corrente_a"]:
+                    headers = next(reader, None)
+                    generic = headers and 2 <= len(headers) <= 5 and headers[0] == "tempo_s" and all(re.fullmatch(r"CH[1-4]_V", h) for h in headers[1:]) and len(set(headers)) == len(headers)
+                    if headers != ["tempo_s", "tensao_v", "corrente_a"] and not generic:
                         raise Problem("Formato de amostras inválido.")
+                    columns = [array("d") for _ in headers]
                     previous = -math.inf
                     for row in reader:
-                        if len(row) != 3:
+                        if len(row) != len(headers):
                             raise Problem("Amostra inválida.")
                         values = [float(value) for value in row]
                         if not all(math.isfinite(value) for value in values) or values[0] <= previous:
@@ -113,10 +117,10 @@ class ResultStore:
                             raise Problem("O registro excede um milhão de amostras.")
                 if len(columns[0]) < 2:
                     raise Problem("O registro possui poucas amostras.")
-                self.cache[key] = columns
+                self.cache[key] = (headers, columns)
                 while len(self.cache) > 2:
                     self.cache.popitem(last=False)
-        t, v, current = columns
+        t = columns[0]
         start = t[0] if start is None else float(start)
         end = t[-1] if end is None else float(end)
         limit = int(limit)
@@ -129,16 +133,16 @@ class ResultStore:
         if last - first <= limit:
             indices = range(first, last)
         else:
-            buckets = max(1, (limit - 2) // 4)
+            buckets = max(1, (limit - 2) // (2*(len(columns)-1)))
             indices = {first, last - 1}
             for bucket in range(buckets):
                 a = first + (last - first) * bucket // buckets
                 b = first + (last - first) * (bucket + 1) // buckets
-                for column in (v, current):
+                for column in columns[1:]:
                     indices.add(min(range(a, b), key=column.__getitem__))
                     indices.add(max(range(a, b), key=column.__getitem__))
             indices = sorted(indices)
-        return dict(points=[[t[k], v[k], current[k]] for k in indices],
+        return dict(points=[[column[k] for column in columns] for k in indices], columns=headers,
                     total=len(t), selected=last-first, start=t[first], end=t[last-1],
                     record_start=t[0], record_end=t[-1])
 
@@ -147,7 +151,7 @@ class ResultStore:
         if capture:
             if not re.fullmatch(r"captura_\d+", capture):
                 raise Problem("Captura inválida.")
-            allowed = {"amostras.csv", "eventos.csv", "metadados.json", "resumo.txt"}
+            allowed = {"amostras.csv", "eventos.csv", "medidas.csv", "metadados.json", "resumo.txt"}
             if name not in allowed and not re.fullmatch(
                     r"graficos/(?:visao_geral|evento_\d+_(?:subida|descida))\.png", name):
                 raise Problem("Exportação desconhecida.", 404)

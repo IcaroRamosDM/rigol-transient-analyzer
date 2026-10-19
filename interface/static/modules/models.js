@@ -38,7 +38,7 @@ export function updateModelControls(connection, cfg) {
     (profile.bench_validated ? t("Validado em bancada.") : t("Perfil preparado; validação em bancada pendente.")) :
     t("Detecção pelas informações do instrumento. Perfis DHO800 e DHO900 disponíveis.");
   element("modelInfo").textContent = description;
-  element("rigolModelInfo").textContent = description + t(" O ensaio usa CH1 e CH2, até 1 milhão de pontos por canal.");
+  element("rigolModelInfo").textContent = description;
   element("scopeModel").textContent = profile ? "Rigol " + profile.model : "Rigol DHO800 / DHO900";
   element("rigolModel").value = cfg.model;
   element("rigolModel").disabled = element("model").disabled;

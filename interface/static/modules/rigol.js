@@ -1,10 +1,9 @@
 import { t } from "./i18n.js";
-import { setTimeSeconds, formatTime } from "./timebase.js";
-import { $, S, api, config, controls, currentConnection, saveConfig, say, number, units, date } from "./core.js";
+import { formatTime } from "./timebase.js";
+import { $, S, api, config, controls, currentConnection, saveConfig, say, number, units, date, applyConfig } from "./core.js";
 
 const stateLabels = {STOP:t("STOP · congelado"), RUN:t("RUN · executando"), WAIT:t("WAIT · aguardando disparo"),
   TD:t("TD · disparado"), AUTO:t("AUTO · visualização contínua")};
-const profileKeys = ["probe_v","probe_i","points","nominal","time_div","scale_v","scale_i","bandwidth"];
 function cell(label, value) {
   const row=document.createElement("div");
   const dt=document.createElement("dt"), dd=document.createElement("dd");
@@ -25,9 +24,6 @@ function renderScope() {
     if (document.activeElement!==select) select.value=String(cfg[select.dataset.mirror]);
     select.disabled=$("probeV").disabled;
   }
-  $("scopePlan").textContent=t("CH1 centrado em ")+units(cfg.nominal,1,"V",2)+
-    t(" · CH2 centrado em 0 V · acoplamento DC nos dois canais. Disparo na subida do CH2 em ")+
-    units((cfg.low_a+cfg.high_a)*.5*cfg.resistor,1000,"mV",1)+".";
   $("scopeReadback").replaceChildren();
   if (!state) {
     $("scopeReadback").append(cell(t("Instrumento"), t("Aguardando leitura dos ajustes")));
@@ -46,10 +42,11 @@ function renderScope() {
 }
 async function operate(action) {
   if (!currentConnection()) return say(t("Conecte o Rigol na aba Medição."), "attention");
-  if (action==="apply" && !$("rigolForm").reportValidity()) return;
+  if (action==="apply" && !$("settingsForm").reportValidity()) return;
   S.busy=true; S.scope={...S.scope,busy:true}; controls(); say("");
   try {
-    const state=await api("/api/scope", {action, settings:config()});
+    const cfg=config();
+    const state=await api("/api/scope", {action, settings:action==="apply"?cfg:{ip:cfg.ip,port:cfg.port,model:cfg.model}});
     S.scope={busy:false, snapshot:state, error:""};
     saveConfig();
     say({read:t("Ajustes lidos no instrumento."), apply:t("Perfil confirmado no Rigol. A visualização está em execução."),
@@ -68,15 +65,9 @@ export function initRigol() {
     input.value=select.value; saveConfig(); controls();
   }));
   $("rigolPreset").addEventListener("click",()=>{
-    for (const key of profileKeys) {
-      const input=document.querySelector('[data-key="'+key+'"]');
-      if (key==="time_div") { setTimeSeconds(S.defaults[key]); continue; }
-      input.value=key==="bandwidth" ? S.defaults[key] :
-        S.defaults[key]*Number(input.dataset.factor||1);
-    }
-    saveConfig(); controls();
+    applyConfig({...S.defaults, measurement:"transients", configuration:"guided", channels:null,trigger:null});
     say(t("Perfil de 5 V carregado no formulário. Clique Aplicar e visualizar para enviá-lo ao Rigol."));
   });
-  $("rigolForm").addEventListener("submit",e=>{e.preventDefault();operate("apply");});
+  $("scopeApply").addEventListener("click",()=>operate("apply"));
   document.addEventListener("rta:scope-render",renderScope);
 }

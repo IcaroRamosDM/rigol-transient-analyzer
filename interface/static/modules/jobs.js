@@ -17,7 +17,7 @@ export function renderJob() {
   $("jobRecovery").textContent = disconnected ?
     t("Não foi possível confirmar a comunicação. Confira alimentação, cabo Ethernet e IP e clique em Reconectar ao Rigol.") :
     realFailure && triggerTimeout ?
-      t("O disparo não foi concluído. Confira o gerador, a ponta e o terra do CH2. Depois, clique em Iniciar medição real para tentar novamente.") :
+      t("O disparo não foi concluído. Confira o sinal, o canal e o nível de disparo. Depois, clique em Iniciar medição real para tentar novamente.") :
     realFailure && clipping ?
       "CH" + job.failure.channel + ": " + t("Confira a ponta, o terra, a escala e a posição vertical. Depois, clique em Iniciar medição real para tentar novamente.") :
     realFailure ?

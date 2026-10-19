@@ -33,7 +33,8 @@ class ModelCatalogTests(unittest.TestCase):
     def test_per_model_time_and_vertical_limits(self):
         for model, profile in MODELS.items():
             cfg = settings(dict(model=model, probe_v=1, probe_i=10,
-                                scale_v=profile["min_scale"], scale_i=10*profile["min_scale"],
+                                scale_v=profile["min_scale"], scale_i=10*profile["min_scale"], nominal=.1,
+                                trigger=dict(source=2,level=0,slope="POS"),
                                 time_div=profile["min_time"]))
             self.assertEqual(cfg["model"], model)
             for change in [{"time_div":profile["min_time"]*.9}, {"time_div":501},
@@ -94,7 +95,7 @@ class Dho900InterfaceTests(harness.InterfaceHarness, unittest.TestCase):
     def test_auto_detection_configuration_and_readback(self):
         self.assertEqual(self.app.connection["model"], "DHO914")
         self.assertFalse(self.app.connection["profile"]["bench_validated"])
-        state = self.app.scope_action(dict(action="apply", settings=self.cfg | {"time_div":2e-9, "scale_i":.0002}))
+        state = self.app.scope_action(dict(action="apply", settings=self.cfg | {"time_div":2e-9, "scale_i":.0002,"trigger":dict(source=2,level=0,slope="POS")}))
         self.assertEqual(state["model"], "DHO914")
         self.assertEqual(state["time_div"], 2e-9)
         self.assertEqual(state["channels"][1]["scale_v"], .0002)

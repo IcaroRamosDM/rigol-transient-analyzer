@@ -96,7 +96,12 @@ def render(stream,run,capture,wave,notes,language):
     if "RTA" not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont("RTA",str(font)))
         pdfmetrics.registerFont(TTFont("RTA-Bold",str(font.with_name("VeraBd.ttf"))))
-    text=TEXT[language];meta=capture["metadata"]
+    text=dict(TEXT[language]);meta=capture["metadata"]
+    signal=meta.get("tipo_medicao")=="sinais"
+    if signal:
+        text["title"]="Signal measurement report" if language=="en" else "Relatório de sinais"
+        text["overview"]="Recorded voltage signals" if language=="en" else "Sinais de tensão registrados"
+        text["disclaimer"]="RMS includes DC. Period measurements require at least two complete stable cycles and 16 samples per cycle. A dash indicates unavailable data. Results include wiring and probe effects." if language=="en" else "RMS inclui a componente contínua. Medidas periódicas exigem dois ciclos completos estáveis e 16 pontos por ciclo. Um traço indica dado indisponível. Os resultados incluem efeitos dos cabos e das pontas."
     navy=colors.HexColor("#142630");teal=colors.HexColor("#087f83");light=colors.HexColor("#edf5f7")
     width=A4[0]-80
     styles=getSampleStyleSheet()
@@ -146,27 +151,43 @@ def render(stream,run,capture,wave,notes,language):
            p(text["origins"].get(meta["origem"],meta["origem"]),"RHead")]
     context=report_context(run,capture,language)
     conditions=[(text["instrument"],context["instrument"]),(context["date_label"],meta["instante_utc"]),
-                (text["samples"],meta["pontos"]),(text["resistor"],value(meta["resistor_ohm"])+" ohm"),
+                (text["samples"],meta["pontos"])]
+    if not signal:
+        conditions += [(text["resistor"],value(meta["resistor_ohm"])+" ohm"),
                 (text["means"],value(meta["media_tensao_v"])+" V / "+value(meta["media_corrente_a"])+" A")]
     provenance=run.get("provenance")
     if provenance:conditions.append((text["lineage"],provenance["run"]+" / "+provenance["capture"]+
                                     " / "+provenance["metadata"]["instante_utc"]+" / "+text["origins"].get(provenance["metadata"]["origem"],provenance["metadata"]["origem"])))
-    story += [p(text["conditions"],"RHead"),table(conditions,[width*.34,width*.66]),
-              p(text["criteria"],"RHead"),table([
-                (text["tolerance"],value(meta["tolerancia_v"],1000)+" mV / "+value(meta["horizonte_s"],1e6)+" us"),
-                (text["windows"],value(meta["janela_s"],1e6)+" us / "+value(meta["guarda_s"],1e6)+" us"),
-                (text["hold"],value(meta["permanencia_s"],1e6)+" us")],[width*.48,width*.52]),
-              p(text["overview"],"RHead"),Trace(wave["points"],1,text["voltage"]),
-              Trace(wave["points"],2,text["current"]),p(text["time"],"RSmall"),p(text["limits"],"RSmall")]
-    rows=[[text[k] for k in ("event","direction","status","sag","over","settle")]]
-    for event in capture["events"][:200]:
-        valid=event["status"]=="valido"
-        rows.append([str(int(event["evento"])),text["rise"] if event["direcao"]=="subida" else text["fall"],
-                     text["valid"] if valid else text["incomplete"],
-                     value(event.get("afundamento_v"),1000,2),value(event.get("sobretensao_v"),1000,2),
-                     value(event.get("acomodacao_s"),1e6,2) if event.get("acomodacao_s") is not None else text["unsettled"] if valid else "-"])
-    story += [p(text["events"],"RHead"),table(rows,[width*f for f in (.08,.14,.22,.17,.17,.22)])]
-    if len(capture["events"])>200:story.append(p(text["partial"],"RSmall"))
+    if signal:
+        story += [p(text["conditions"],"RHead"),table(conditions,[width*.34,width*.66])]
+        for ch in meta["canais"]:
+            heading="CH"+str(ch["numero"])+" (V)"
+            pairs=[("Min / max",value(ch["minimo_v"],digits=5)+" / "+value(ch["maximo_v"],digits=5)+" V"),
+              ("Mean / RMS" if language=="en" else "Média / RMS",value(ch["media_v"],digits=5)+" / "+value(ch["rms_v"],digits=5)+" V"),
+              ("Vpp",value(ch["vpp_v"],digits=5)+" V"),
+              ("Frequency / period" if language=="en" else "Frequência / período",value(ch["frequencia_hz"])+" Hz / "+value(ch["periodo_s"],1e6)+" us"),
+              ("Duty / complete cycles" if language=="en" else "Ciclo ativo / ciclos completos",value(ch["duty"],100)+" % / "+str(ch["ciclos"]))]
+            story += [p(heading,"RHead"),table(pairs,[width*.4,width*.6])]
+        story.append(p(text["overview"],"RHead"))
+        for i,ch in enumerate(meta["canais"]):story.append(Trace(wave["points"],i+1,"CH"+str(ch["numero"])+" (V)"))
+        story += [p(text["time"],"RSmall"),p(text["limits"],"RSmall")]
+    else:
+        story += [p(text["conditions"],"RHead"),table(conditions,[width*.34,width*.66]),
+                  p(text["criteria"],"RHead"),table([
+                    (text["tolerance"],value(meta["tolerancia_v"],1000)+" mV / "+value(meta["horizonte_s"],1e6)+" us"),
+                    (text["windows"],value(meta["janela_s"],1e6)+" us / "+value(meta["guarda_s"],1e6)+" us"),
+                    (text["hold"],value(meta["permanencia_s"],1e6)+" us")],[width*.48,width*.52]),
+                  p(text["overview"],"RHead"),Trace(wave["points"],1,text["voltage"]),
+                  Trace(wave["points"],2,text["current"]),p(text["time"],"RSmall"),p(text["limits"],"RSmall")]
+        rows=[[text[k] for k in ("event","direction","status","sag","over","settle")]]
+        for event in capture["events"][:200]:
+            valid=event["status"]=="valido"
+            rows.append([str(int(event["evento"])),text["rise"] if event["direcao"]=="subida" else text["fall"],
+                         text["valid"] if valid else text["incomplete"],
+                         value(event.get("afundamento_v"),1000,2),value(event.get("sobretensao_v"),1000,2),
+                         value(event.get("acomodacao_s"),1e6,2) if event.get("acomodacao_s") is not None else text["unsettled"] if valid else "-"])
+        story += [p(text["events"],"RHead"),table(rows,[width*f for f in (.08,.14,.22,.17,.17,.22)])]
+        if len(capture["events"])>200:story.append(p(text["partial"],"RSmall"))
     if notes:story += [p(text["notes"],"RHead"),p(notes)]
     story += [Spacer(1,12),p(text["disclaimer"],"RSmall")]
     def footer(c,doc):

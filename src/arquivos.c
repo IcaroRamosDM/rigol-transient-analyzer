@@ -227,6 +227,14 @@ int ct_exportar(const char *raiz, const CtCaptura *c, const CtConfig *cfg,
 int ct_finalizar(const char *raiz, const CtConfig *cfg, unsigned concluidas,
                  size_t eventos, size_t validos, size_t acomodados, char *erro)
 {
+  if(cfg->sinais) {
+    FILE *f=novo_arquivo(raiz,"execucao.json",erro);
+    if(!f) return -1;
+    fprintf(f,"{\"concluido\":true,\"tipo_medicao\":\"sinais\",\"capturas\":%u,"
+      "\"simulacao\":%s,\"memoria_existente\":%s}\n",
+      concluidas,cfg->simular?"true":"false",cfg->existente?"true":"false");
+    return fechar(f,erro);
+  }
   /* Estatisticas entre eventos/capturas; dados ja exportados em eventos.csv. */
   size_t n[2][5]={{0}};
   double medias[2][5]={{0}},m2[2][5]={{0}},minimos[2][5]={{0}},maximos[2][5]={{0}};
@@ -364,4 +372,70 @@ int ct_graficos(const char *raiz, char *erro)
     return ct_falha(erro,"Falha nos graficos; execute make dependencias. Os CSVs foram preservados.");
   return 0;
 #endif
+}
+
+static void json_numero(FILE *f,double n)
+{
+  if(isfinite(n)) fprintf(f,"%.17g",n); else fputs("null",f);
+}
+
+int ct_exportar_sinais(const char *raiz,const CtRegistro *c,const CtConfig *cfg,char *erro)
+{
+  char pasta[CT_CAMINHO];
+  int tam=snprintf(pasta,sizeof pasta,"%s/captura_%03u",raiz,c->numero);
+  if(tam<0 || (size_t)tam>=sizeof pasta || ct_criar_pasta(pasta))
+    return ct_falha(erro,"Nao foi possivel criar pasta da captura.");
+  FILE *f=novo_arquivo(pasta,"amostras.csv",erro); if(!f) return -1;
+  fputs("tempo_s",f);
+  for(unsigned ch=0;ch<c->n_canais;++ch) fprintf(f,",CH%u_V",cfg->canais[ch].numero);
+  fputc('\n',f);
+  for(size_t k=0;k<c->n;++k) {
+    if(k%4096==0 && ct_interrompido()) { fclose(f); return ct_falha(erro,"Exportacao interrompida."); }
+    fprintf(f,"%.17g",c->t0+(double)k*c->dt);
+    for(unsigned ch=0;ch<c->n_canais;++ch) fprintf(f,",%.17g",c->dados[ch][k]);
+    fputc('\n',f);
+  }
+  if(fechar(f,erro)<0) return -1;
+  f=novo_arquivo(pasta,"medidas.csv",erro); if(!f) return -1;
+  fputs("canal,minimo_v,maximo_v,media_v,rms_v,vpp_v,frequencia_hz,periodo_s,duty,ciclos\n",f);
+  for(unsigned ch=0;ch<c->n_canais;++ch) {
+    const CtMedidas *m=&c->medidas[ch];
+    fprintf(f,"CH%u,%.17g,%.17g,%.17g,%.17g,%.17g,",cfg->canais[ch].numero,
+      m->minimo,m->maximo,m->media,m->rms,m->maximo-m->minimo);
+    if(m->periodico) fprintf(f,"%.17g,%.17g,%.17g,%zu\n",m->frequencia,m->periodo,m->duty,m->ciclos);
+    else fputs(",,,0\n",f);
+  }
+  if(fechar(f,erro)<0) return -1;
+  f=novo_arquivo(pasta,"resumo.txt",erro); if(!f) return -1;
+  fprintf(f,"Modo: Sinais\nOrigem: %s\nInstrumento: %s\nPontos: %zu\nPasso: %.12g s\n"
+    "Todos os canais em volts. RMS inclui a componente continua.\n"
+    "Frequencia, periodo e duty exigem dois ciclos completos estaveis e 16 amostras/ciclo.\n"
+    "Campos vazios indicam medida periodica indisponivel; consulte medidas.csv.\n",
+    c->origem,c->instrumento,c->n,c->dt);
+  if(fechar(f,erro)<0) return -1;
+  f=novo_arquivo(pasta,"metadados.json",erro); if(!f) return -1;
+  fputs("{\"versao_formato\":2,\"tipo_medicao\":\"sinais\",\"origem\":",f); json_texto(f,c->origem);
+  fputs(",\"instrumento\":",f); json_texto(f,c->instrumento);
+  fputs(",\"instante_utc\":",f); json_texto(f,c->instante);
+  fprintf(f,",\"numero\":%u,\"configuracao_aplicada\":%s,\"pontos\":%zu,"
+    "\"t0_s\":%.17g,\"dt_s\":%.17g,\"canais\":[",
+    c->numero,cfg->configurar?"true":"false",c->n,c->t0,c->dt);
+  for(unsigned ch=0;ch<c->n_canais;++ch) {
+    const CtMedidas *m=&c->medidas[ch]; const CtCanal *cc=&cfg->canais[ch];
+    if(ch) fputc(',',f);
+    fprintf(f,"{\"numero\":%u,\"unidade\":\"V\",\"minimo_v\":%.17g,\"maximo_v\":%.17g,"
+      "\"media_v\":%.17g,\"rms_v\":%.17g,\"vpp_v\":%.17g,\"frequencia_hz\":",
+      cc->numero,m->minimo,m->maximo,m->media,m->rms,m->maximo-m->minimo);
+    json_numero(f,m->frequencia); fputs(",\"periodo_s\":",f); json_numero(f,m->periodo);
+    fputs(",\"duty\":",f); json_numero(f,m->duty);
+    fprintf(f,",\"ciclos\":%zu,\"medida_periodica_valida\":%s,\"ajustes_solicitados\":{"
+      "\"sonda\":%u,\"escala_v_div\":%.17g,\"centro_v\":%.17g,\"acoplamento\":",
+      m->ciclos,m->periodico?"true":"false",cc->sonda,cc->escala,cc->centro);
+    json_texto(f,cc->acoplamento); fputs(",\"banda\":",f); json_texto(f,cc->banda);
+    fprintf(f,"},\"preambulo\":{\"pontos\":%zu,\"dx\":%.17g,\"x0\":%.17g,\"xr\":%.17g,"
+      "\"dy\":%.17g,\"y0\":%.17g,\"yr\":%.17g}}",c->pre[ch].pontos,c->pre[ch].dx,
+      c->pre[ch].x0,c->pre[ch].xr,c->pre[ch].dy,c->pre[ch].y0,c->pre[ch].yr);
+  }
+  fputs("]}\n",f);
+  return fechar(f,erro);
 }

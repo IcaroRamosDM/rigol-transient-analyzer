@@ -13,7 +13,7 @@ export const origins = {
   SIMULACAO: [t("Demonstração"), "demo"],
   ARQUIVO: [t("Reanálise de arquivo"), "file"]
 };
-export const titles = {compare:[t("Comparar ensaios"),t("Comparação de registros preservados.")],measure: [t("Bancada de transientes"), t("Da mudança de carga à resposta da alimentação.")],
+export const titles = {compare:[t("Comparar ensaios"),t("Comparação de registros preservados.")],measure: [t("Bancada de medições"), t("Sinais e resposta da alimentação no mesmo lugar.")],
   prepare: [t("Preparar a bancada"), t("Conexões e ajustes da montagem de referência.")],
   rigol: [t("Configurar o Rigol"), t("Ajustes da bancada e controle da visualização no instrumento.")],
   history: [t("Histórico de ensaios"), t("Volte aos resultados, com ou sem o instrumento conectado.")]};
@@ -59,10 +59,10 @@ export function config() {
   for (const input of inputs) {
     const key = input.dataset.key;
     value[key] = input.type === "checkbox" ? input.checked :
-      ["ip", "bandwidth", "model"].includes(key) ? input.value.trim() :
+      ["ip", "bandwidth", "model", "measurement", "configuration"].includes(key) ? input.value.trim() :
       Number(input.value) / Number(input.dataset.factor || 1);
   }
-  return value;
+  return S.measurement ? {...value, channels:structuredClone(S.measurement.channels), trigger:{...S.measurement.trigger}} : value;
 }
 export function fillConfig(defaults, restoreSaved=true) {
   let saved = {};
@@ -73,12 +73,13 @@ export function fillConfig(defaults, restoreSaved=true) {
     const value = Object.hasOwn(saved, key) ? saved[key] : defaults[key];
     if (key === "time_div") { savedTime=Number(value); continue; }
     if (input.type === "checkbox") input.checked = typeof value === "boolean" ? value : defaults[key];
-    else input.value = ["ip", "bandwidth", "model"].includes(key) ? value :
+    else input.value = ["ip", "bandwidth", "model", "measurement", "configuration"].includes(key) ? value :
       Number(value) * Number(input.dataset.factor || 1);
     if (key === "model" && !input.value) input.value = defaults.model;
   }
   updateModelControls(S.connection, {...config(), time_div:savedTime});
   setTimeSeconds(savedTime,false);
+  document.dispatchEvent(new CustomEvent("rta:config",{detail:{...defaults,...saved}}));
 }
 export function saveConfig() {
   try { localStorage.setItem("rta.settings.v1", JSON.stringify(config())); } catch (_) {}
@@ -98,6 +99,8 @@ export function controls() {
   $("demo").disabled = busy;
   $("emptyDemo").disabled = busy;
   $("start").disabled = busy || !currentConnection();
+  if($("quickStart"))$("quickStart").disabled=busy||!currentConnection();
+  if($("quickDemo"))$("quickDemo").disabled=busy;
   $("cancel").hidden = !active();
   $("cancel").disabled = !active() || S.job.state === "cancelling";
   $("shutdown").disabled = busy;
@@ -105,7 +108,7 @@ export function controls() {
   $("startHint").textContent = active() ? t("Aguarde o ensaio ou use Cancelar.") :
     currentConnection() && S.job?.state === "error" ?
       t("Confira as conexões e os ajustes antes de tentar novamente.") :
-    currentConnection() ? t("Prepare a fonte e o gerador antes de iniciar.") :
+    currentConnection() ? t("Confira as conexões e os ajustes antes de iniciar.") :
     t("Conecte o Rigol para habilitar a medição real.");
   const connected = currentConnection() && !S.closed && S.online;
   $("deviceBadge").className = "badge " + (connected ? "real" : "neutral");

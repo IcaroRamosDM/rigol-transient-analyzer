@@ -30,7 +30,7 @@ export async function refreshWorkbench(){
  [profiles,backups,history]=await Promise.all([api("/api/profiles"),api("/api/backups"),api("/api/history")]);
  const selected=$("profileSelect").value,backup=$("backupSelect").value;
  $("profileSelect").replaceChildren(new Option(t("Selecione um perfil"),""));
- profiles.forEach(p=>option($("profileSelect"),p.name,p.id));$("profileSelect").value=selected;
+ profiles.forEach(p=>option($("profileSelect"),p.name+" · "+t(p.settings.measurement==="signals"?"Sinais":"Transientes"),p.id));$("profileSelect").value=selected;
  $("backupSelect").replaceChildren(new Option(t("Selecione um backup"),""));
  backups.forEach(b=>{
   const kind={"Before measurement":t("Antes da medição"),"Before restore":t("Antes da restauração"),Manual:"Manual"}[b.label]||b.label;
@@ -53,13 +53,16 @@ function updateControls(){
 function captureTools(){
  if(!S.capture)return;
  const m=S.capture.metadata;
+ if(m.tipo_medicao==="sinais"){$("reportDownload").hidden=true;return;}
  for(const [id,key,factor] of [["reLow","limiar_baixo_a",1000],["reHigh","limiar_alto_a",1000],["reWindow","janela_s",1e6],
    ["reGuard","guarda_s",1e6],["reHorizon","horizonte_s",1e6],["reTolerance","tolerancia_v",1000],["reHold","permanencia_s",1e6]])
   $(id).value=String(Number((m[key]*factor).toPrecision(12)));
  $("reportDownload").hidden=true;
 }
 function reanalysisSettings(){
- const m=S.capture.metadata,cfg={...config(),resistor:m.resistor_ohm,captures:1};
+ const m=S.capture.metadata,cfg={...S.defaults,...config(),measurement:"transients",configuration:"guided",channels:null,trigger:null,
+  voltage_channel:(m.canais_solicitados||[1,2])[0],current_channel:(m.canais_solicitados||[1,2])[1],
+  resistor:m.resistor_ohm,captures:1};
  for(const [id,key,factor] of [["reLow","low_a",1000],["reHigh","high_a",1000],["reWindow","window_us",1],
   ["reGuard","guard_us",1],["reHorizon","horizon_us",1],["reTolerance","tolerance_v",1000],["reHold","hold_us",1]])
   cfg[key]=Number($(id).value)/factor;
@@ -68,8 +71,8 @@ function reanalysisSettings(){
 async function fillSelection(field, preferred={}){
  const run=field.querySelector("[data-run]"),capture=field.querySelector("[data-capture]"),event=field.querySelector("[data-event]");
  run.replaceChildren(new Option(t("Selecione um ensaio"),""));
- history.forEach(row=>option(run,date(row.date)+" · "+(origins[row.origin]?.[0]||row.origin)+" · "+row.id,row.id));
- run.value=preferred.run||history[0]?.id||"";
+ history.filter(row=>row.measurement!=="sinais").forEach(row=>option(run,date(row.date)+" · "+(origins[row.origin]?.[0]||row.origin)+" · "+row.id,row.id));
+ run.value=preferred.run||history.find(h=>h.measurement!=="sinais")?.id||"";
  let sequence=0;
  async function loadCaptures(chosen){
   const request=++sequence;
@@ -109,7 +112,7 @@ async function addSelection(preferred={}){
 async function comparisonView(preferred){
  await refreshWorkbench();
  $("comparisonSelectors").replaceChildren();comparison=null;$("comparisonResult").hidden=true;
- await addSelection(preferred||{});await addSelection({run:history.find(h=>h.id!==$("comparisonSelectors").querySelector("[data-run]")?.value)?.id});
+ await addSelection(preferred||{});await addSelection({run:history.find(h=>h.measurement!=="sinais"&&h.id!==$("comparisonSelectors").querySelector("[data-run]")?.value)?.id});
  document.dispatchEvent(new CustomEvent("rta:view",{detail:"compare"}));
 }
 const colors=["#087f83","#c4860a","#9353a2","#3465b4"];

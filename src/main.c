@@ -42,7 +42,11 @@ static void ajuda(const char *programa)
     "--timeout S              prazo de rede/disparo (padrao 5)\n"
     "--pontos N               1000,10000,100000,1000000 (padrao 1000000)\n"
     "--porta N                porta do instrumento (padrao 5555)\n"
-    "--ch-v N --ch-i N        canais distintos 1/2 (padrao 1/2)\n"
+    "--tipo transientes|sinais modo de analise (padrao transientes)\n"
+    "--canal N:P:S:C:DC:20M   canal, ponta, V/div, centro V, acoplamento, banda\n"
+    "                        repita para 1..4 canais no modo sinais\n"
+    "--disparo-canal N --disparo-v V --disparo-borda POS|NEG\n"
+    "--ch-v N --ch-i N        canais distintos 1..4 (padrao 1/2)\n"
     "--sonda-v N --sonda-i N   fatores FISICOS das pontas: 1 ou 10 (padrao 1/1)\n"
     "--escala-v V             volts/div do canal da fonte (padrao 0.5)\n"
     "--escala-shunt V         volts/div do canal do resistor (padrao 0.1)\n"
@@ -83,8 +87,12 @@ int main(int argc,char **argv)
   bool apenas_configurar=false;
   enum {SIM=1000,EXISTENTE,SEMCONFIG,CAPTURAS,SAIDA,RESISTOR,BAIXO,ALTO,JANELA,
     GUARDA,HORIZONTE,TOLERANCIA,PERMANENCIA,TIMEOUT,PONTOS,PORTA,CHV,CHI,
-    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA,APENASCONFIG,MODELO,MODELOS};
+    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA,APENASCONFIG,MODELO,MODELOS,TIPO,CANAL,DISPCANAL,DISPV,DISPBORDA};
   const struct option opcoes[]={
+    {"tipo",required_argument,NULL,TIPO},{"canal",required_argument,NULL,CANAL},
+    {"disparo-canal",required_argument,NULL,DISPCANAL},
+    {"disparo-v",required_argument,NULL,DISPV},
+    {"disparo-borda",required_argument,NULL,DISPBORDA},
     {"modelo",required_argument,NULL,MODELO},{"listar-modelos",no_argument,NULL,MODELOS},
     {"help",no_argument,NULL,'h'},{"simular",no_argument,NULL,SIM},
     {"configurar-apenas",no_argument,NULL,APENASCONFIG},
@@ -116,6 +124,27 @@ int main(int argc,char **argv)
     }
     switch (opcao) {
       case 'h': ajuda(argv[0]); return EXIT_SUCCESS;
+      case TIPO:
+        if (strcmp(optarg,"sinais") && strcmp(optarg,"transientes")) {
+          fputs("Tipo permitido: sinais ou transientes.\n",stderr); return EXIT_FAILURE;
+        }
+        cfg.sinais=!strcmp(optarg,"sinais"); break;
+      case CANAL: {
+        unsigned n,probe; double scale,center; char coupling[8],band[8],extra;
+        if (cfg.n_canais==4 || sscanf(optarg,"%u:%u:%lf:%lf:%7[^:]:%7s%c",
+            &n,&probe,&scale,&center,coupling,band,&extra)!=6 ||
+            (strcmp(coupling,"DC") && strcmp(coupling,"AC")) ||
+            (strcmp(band,"20M") && strcmp(band,"OFF"))) {
+          fputs("Canal: N:SONDA:V_DIV:CENTRO_V:DC|AC:20M|OFF (maximo 4).\n",stderr);
+          return EXIT_FAILURE;
+        }
+        cfg.canais[cfg.n_canais++]=(CtCanal){n,probe,scale,center,
+          !strcmp(coupling,"DC")?"DC":"AC",!strcmp(band,"20M")?"20M":"OFF"};
+        break;
+      }
+      case DISPCANAL: if(inteiro(optarg,&cfg.disparo_canal)<0) return EXIT_FAILURE; break;
+      case DISPV: if(numero(optarg,&cfg.disparo_v)<0) return EXIT_FAILURE; break;
+      case DISPBORDA: cfg.disparo_borda=optarg; break;
       case MODELO: cfg.modelo=optarg; break;
       case MODELOS: ct_listar_modelos(); return EXIT_SUCCESS;
       case SIM: cfg.simular=true; break;
@@ -163,6 +192,12 @@ int main(int argc,char **argv)
     fprintf(stderr,"Modelo sem perfil disponivel: %s. Use --listar-modelos.\n",cfg.modelo);
     return EXIT_FAILURE;
   }
+  if (cfg.sinais && !cfg.n_canais) {
+    cfg.n_canais=1;
+    cfg.canais[0]=(CtCanal){1,1,1,0,"DC","20M"};
+  }
+  if (!cfg.disparo_canal) cfg.disparo_canal=cfg.sinais?cfg.canais[0].numero:cfg.ch_i;
+  if (!cfg.disparo_borda) cfg.disparo_borda="POS";
   if (ct_validar_config(&cfg,erro)<0) { fprintf(stderr,"%s\n",erro); return EXIT_FAILURE; }
   if (!cfg.simular && !cfg.entrada) {
     if (optind+1!=argc) { ajuda(argv[0]); return EXIT_FAILURE; }
@@ -196,6 +231,12 @@ int main(int argc,char **argv)
   }
   if (ct_diretorio(cfg.saida,raiz,sizeof raiz,erro)<0) goto falha;
   printf("Resultados: %s\n",raiz);
+  if (cfg.sinais) {
+    int resultado=ct_executar_sinais(&rede,&cfg,id,raiz,erro);
+    ct_desconectar(&rede);
+    if (resultado<0) goto falha;
+    return EXIT_SUCCESS;
+  }
   unsigned concluidas=0;
   size_t eventos=0,validos=0,acomodados=0;
   for (unsigned j=1;j<=cfg.capturas;++j) {

@@ -58,12 +58,21 @@ int ct_validar_modelo(const CtConfig *cfg, const char *id, char *erro)
   if (cfg->modelo && strcmp(cfg->modelo,"auto") && strcmp(cfg->modelo,m->nome))
     return ct_falha(erro,"Modelo selecionado %s; instrumento conectado %s. Nenhum ajuste enviado.",
                     cfg->modelo,m->nome);
+  if ((!cfg->sinais && (cfg->ch_v>m->canais || cfg->ch_i>m->canais)) ||
+      cfg->disparo_canal>m->canais)
+    return ct_falha(erro,"Canal indisponivel no %s.",m->nome);
+  for (unsigned k=0;k<cfg->n_canais;++k) {
+    const CtCanal *ch=&cfg->canais[k];
+    if(ch->numero>m->canais) return ct_falha(erro,"Canal indisponivel no %s.",m->nome);
+    if(cfg->configurar && (ch->escala<m->escala_min*ch->sonda || ch->escala>10*ch->sonda))
+      return ct_falha(erro,"Escala vertical fora da faixa do %s.",m->nome);
+  }
   if (!cfg->configurar) return 0;
   if (cfg->tempo_div<m->tempo_min || cfg->tempo_div>m->tempo_max)
     return ct_falha(erro,"Tempo por divisao fora da faixa do %s: %.9g a %.9g s.",
                     m->nome,m->tempo_min,m->tempo_max);
-  if (cfg->escala_v<m->escala_min*cfg->sonda_v || cfg->escala_v>10*cfg->sonda_v ||
-      cfg->escala_shunt<m->escala_min*cfg->sonda_i || cfg->escala_shunt>10*cfg->sonda_i)
+  if (!cfg->n_canais && (cfg->escala_v<m->escala_min*cfg->sonda_v || cfg->escala_v>10*cfg->sonda_v ||
+      cfg->escala_shunt<m->escala_min*cfg->sonda_i || cfg->escala_shunt>10*cfg->sonda_i))
     return ct_falha(erro,"Escala vertical fora da faixa do %s para a ponta selecionada.",m->nome);
   return 0;
 }

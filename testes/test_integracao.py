@@ -30,7 +30,7 @@ class Instrumento:
         self.estado = "STOP"
         self.pendente = False
         self.consultas = 0
-        self.parametros = {":TRIG:SWE": "NORM"}
+        self.parametros = {":TRIG:SWE": "NORM", ":CHAN1:COUP":"DC", ":CHAN2:COUP":"DC"}
         self.servidor = socket.socket()
         self.servidor.bind(("127.0.0.1", 0))
         self.porta = self.servidor.getsockname()[1]

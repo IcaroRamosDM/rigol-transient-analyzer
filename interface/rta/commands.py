@@ -16,6 +16,17 @@ def build_command(executable, results, run, mode, cfg, configuration_only=False,
                    "permanencia-us": "hold_us", "timeout": "timeout"})
     for flag, key in options.items():
         command.extend(["--" + flag, str(cfg[key])])
+    command.extend(["--tipo", "sinais" if cfg["measurement"] == "signals" else "transientes",
+                    "--ch-v", str(cfg["voltage_channel"]), "--ch-i", str(cfg["current_channel"])])
+    for channel in cfg["channels"]:
+        command.extend(["--canal", ":".join(str(channel[k]) for k in
+                        ("number", "probe", "scale", "center", "coupling", "bandwidth"))])
+    trigger = cfg["trigger"]
+    command.extend(["--disparo-canal", str(trigger["source"]), "--disparo-v", str(trigger["level"]),
+                    "--disparo-borda", trigger["slope"]])
+    if mode == "real" and not configuration_only:
+        if cfg["configuration"] == "preserve": command.append("--sem-configurar")
+        elif cfg["configuration"] == "memory": command.append("--existente")
     if cfg["plots"]:
         command.append("--graficos")
     if mode=="reanalysis":

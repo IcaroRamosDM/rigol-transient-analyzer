@@ -19,7 +19,7 @@ export async function refreshHistory() {
     small.textContent = run.id + (run.complete ? "" : t(" · exportação parcial"));
     name.append(strong, small); row.append(name);
     const origin = document.createElement("td"); origin.append(badge(run.origin)); row.append(origin);
-    for (const value of [run.captures, run.valid]) {
+    for (const value of [run.captures, run.measurement === "sinais" ? t("Sinais") : run.valid]) {
       const cell = document.createElement("td"); cell.textContent = value; row.append(cell);
     }
     const action = document.createElement("td");
@@ -67,10 +67,32 @@ export async function selectCapture(index) {
     t("Registro físico salvo em ") + date(meta.instante_utc) + t(". O gráfico exibe esta captura, sem atualização contínua.");
   $("openOriginal").hidden=!S.run.provenance;
   if(S.run.provenance)$("sourceNotice").textContent+=" "+t("Registro original:")+" "+date(S.run.provenance.metadata.instante_utc)+" · "+(origins[S.run.provenance.metadata.origem]?.[0]||S.run.provenance.metadata.origem);
-  $("meanV").textContent = units(meta.media_tensao_v, 1, "V", 3);
-  $("meanI").textContent = units(meta.media_corrente_a, 1000, "mA", 1);
-  $("validEvents").textContent = meta.eventos_validos + " / " + meta.bordas;
-  $("pointCount").textContent = number(meta.pontos, 0) + t(" pontos por canal");
+  const signal=meta.tipo_medicao==="sinais";
+  $("signalResults").hidden=!signal;$("transientResults").hidden=signal;
+  $("meanV").closest(".summary-grid").hidden=signal;
+  $("reanalysisForm").closest("details").hidden=signal;$("compareCurrent").hidden=signal;
+  $("waveform").setAttribute("aria-label",signal?t("Sinais em volts"):t("Gráficos de tensão e corrente ao longo do tempo"));
+  $("waveTitle").textContent=signal?t("Sinais em volts"):t("Tensão e corrente");
+  document.querySelector(".wave-heading .legend").hidden=signal;
+  $("chartContainer").style.height=signal?Math.max(300,meta.canais.length*180)+"px":"";
+  $("signalMetrics").replaceChildren();
+  if(signal){
+    for(const ch of meta.canais){
+      const row=document.createElement("tr");
+      for(const value of ["CH"+ch.numero,units(ch.minimo_v,1,"V",4),units(ch.maximo_v,1,"V",4),units(ch.media_v,1,"V",4),units(ch.rms_v,1,"V",4),units(ch.vpp_v,1,"V",4),
+        units(ch.frequencia_hz,1,"Hz",2),units(ch.periodo_s,1e6,"µs",3),units(ch.duty,100,"%",2)]){
+        const cell=document.createElement("td");cell.textContent=value;row.append(cell);
+      }$("signalMetrics").append(row);
+    }
+  }else{
+    $("meanV").textContent=units(meta.media_tensao_v,1,"V",3);
+    $("meanI").textContent=units(meta.media_corrente_a,1000,"mA",1);
+    const roles=meta.canais_solicitados||[1,2];
+    $("meanV").nextElementSibling.textContent="CH"+roles[0]+" · "+t("alimentação");
+    $("meanI").nextElementSibling.textContent="CH"+roles[1]+" · "+t("ramo comutado");
+    $("validEvents").textContent=meta.eventos_validos+" / "+meta.bordas;
+  }
+  $("pointCount").textContent=number(meta.pontos,0)+t(" pontos por canal");
   $("eventSelect").replaceChildren();
   S.capture.events.forEach((event, i) => {
     const option = document.createElement("option");
@@ -87,6 +109,9 @@ export async function selectCapture(index) {
 export function event() { return S.capture && S.capture.events[S.event]; }
 export function renderEvent() {
   const e = event(), meta = S.capture.metadata;
+  if(meta.tipo_medicao==="sinais"){
+    $("eventWindow").disabled=true;$("edgeZoom").disabled=true;exports();return;
+  }
   const valid = e && e.status === "valido";
   $("prevEvent").disabled = S.event <= 0;
   $("nextEvent").disabled = S.event >= S.capture.events.length - 1;
@@ -120,9 +145,11 @@ function exports() {
     a.href = "/download?" + query; a.textContent = label; a.download = name.split("/").pop();
     $("exportLinks").append(a);
   }
-  link("amostras.csv", t("Amostras · CSV")); link("eventos.csv", t("Transições · CSV"));
+  link("amostras.csv", t("Amostras · CSV"));
+  const signal=S.capture.metadata.tipo_medicao==="sinais";
+  if(signal)link("medidas.csv",t("Medidas · CSV"));else link("eventos.csv",t("Transições · CSV"));
   link("resumo.txt", t("Resumo · texto")); link("metadados.json", t("Configuração · JSON"));
-  if (S.run.execution.concluido) link("estatisticas.csv", t("Estatísticas · CSV"), false);
+  if (!signal && S.run.execution.concluido) link("estatisticas.csv", t("Estatísticas · CSV"), false);
   if (S.capture.images.includes("visao_geral.png")) link("graficos/visao_geral.png", t("Visão geral · PNG"));
   const e = event();
   if (e) {

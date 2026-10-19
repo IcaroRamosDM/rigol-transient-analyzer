@@ -119,7 +119,7 @@ def read_scope(ip, port, action="read", model="auto", timeout=10):
         if state not in {"RUN", "WAIT", "TD", "AUTO", "STOP"}:
             raise Problem("Estado de disparo desconhecido: " + state, 502)
         channels = []
-        for channel in (1, 2):
+        for channel in range(1, identity["profile"]["channels"]+1):
             prefix = ":CHAN" + str(channel)
             channels.append(dict(channel=channel, probe=connection.number(prefix + ":PROB?"),
                                  scale_v=connection.number(prefix + ":SCAL?"),
@@ -147,13 +147,15 @@ def read_scope(ip, port, action="read", model="auto", timeout=10):
 def verify_profile(state, cfg):
     def close(actual, expected):
         return math.isclose(actual, expected, rel_tol=1e-6, abs_tol=1e-10)
-    for channel, probe, scale, offset in zip(state["channels"],
-            (cfg["probe_v"], cfg["probe_i"]), (cfg["scale_v"], cfg["scale_i"]), (-cfg["nominal"], 0)):
-        if not (channel["display"] and close(channel["probe"], probe) and
-                close(channel["scale_v"], scale) and close(channel["offset_v"], offset) and
-                channel["coupling"] == "DC" and channel["bandwidth"] == cfg["bandwidth"]):
+    channels = cfg["channels"]
+    for expected in channels:
+        channel = next(c for c in state["channels"] if c["channel"] == expected["number"])
+        if not (channel["display"] and close(channel["probe"], expected["probe"]) and
+                close(channel["scale_v"], expected["scale"]) and close(channel["offset_v"], -expected["center"]) and
+                channel["coupling"] == expected["coupling"] and channel["bandwidth"] == expected["bandwidth"]):
             raise Problem("O canal " + str(channel["channel"]) + " não confirmou o perfil solicitado.", 502)
+    trigger = cfg["trigger"]
     if not (close(state["time_div"], cfg["time_div"]) and state["memory_points"] == cfg["points"] and
-            state["trigger_source"] == "CHAN2" and state["trigger_slope"] == "POS" and
-            close(state["trigger_level"], (cfg["low_a"] + cfg["high_a"]) * .5 * cfg["resistor"])):
+            state["trigger_source"] == "CHAN"+str(trigger["source"]) and state["trigger_slope"] == trigger["slope"] and
+            close(state["trigger_level"], trigger["level"])):
         raise Problem("A base de tempo, memória ou disparo não confirmou o perfil.", 502)

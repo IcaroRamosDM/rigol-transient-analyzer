@@ -11,6 +11,17 @@
 #define CT_CAMINHO 4096
 
 typedef struct {
+  unsigned numero, sonda;
+  double escala, centro;
+  const char *acoplamento, *banda;
+} CtCanal;
+
+typedef struct {
+  bool sinais;
+  unsigned n_canais, disparo_canal;
+  double disparo_v;
+  const char *disparo_borda;
+  CtCanal canais[4];
   double resistor, baixo_a, alto_a, janela_s, guarda_s, horizonte_s;
   double tolerancia_v, permanencia_s, timeout_s;
   double escala_v, escala_shunt, nominal_v, tempo_div;
@@ -99,3 +110,24 @@ int ct_identificar(CtRede *r, char *id, size_t tamanho, char *erro);
 int ct_configurar(CtRede *r, const CtConfig *cfg, char *erro);
 int ct_nova(CtRede *r, const CtConfig *cfg, char *erro);
 int ct_receber(CtRede *r, const CtConfig *cfg, CtCaptura *c, char *erro);
+
+typedef struct {
+  double minimo, maximo, media, rms, periodo, frequencia, duty;
+  size_t ciclos;
+  bool periodico;
+} CtMedidas;
+typedef struct {
+  size_t n;
+  unsigned n_canais, numero;
+  double t0, dt, *dados[4];
+  CtPreambulo pre[4];
+  CtMedidas medidas[4];
+  char instrumento[256], origem[32], instante[64];
+} CtRegistro;
+CtMedidas ct_medir_sinal(const double *dados, size_t n, double dt);
+int ct_ler_canal(CtRede *r, const CtConfig *cfg, unsigned canal,
+                 CtPreambulo *p, double **dados, char *erro);
+int ct_executar_sinais(CtRede *r, const CtConfig *cfg, const char *id,
+                       const char *raiz, char *erro);
+int ct_exportar_sinais(const char *raiz, const CtRegistro *c,
+                       const CtConfig *cfg, char *erro);

@@ -71,10 +71,17 @@ export function draw() {
   c.font = "10px Segoe UI, sans-serif";
   const panels = [{column:1,top:g.top,bottom:g.middle-24,color:"#c4860a",label:t("TENSÃO (V)"),factor:1},
     {column:2,top:g.middle+30,bottom:g.bottom,color:"#088895",label:t("CORRENTE (mA)"),factor:1000}];
+  const signal=S.capture.metadata.tipo_medicao==="sinais";
+  if(signal){
+    panels.length=0;
+    const channels=S.capture.metadata.canais, slot=(g.height-42)/channels.length;
+    channels.forEach((ch,i)=>panels.push({column:i+1,top:30+slot*i,bottom:slot*(i+1)-24,
+      color:["#c4860a","#088895","#9353a2","#3465b4"][i],label:"CH"+ch.numero+" (V)",factor:1}));
+  }
   for (const panel of panels) {
     let lo = Infinity, hi = -Infinity;
     for (const point of data.points) { const v = point[panel.column]*panel.factor; lo=Math.min(lo,v); hi=Math.max(hi,v); }
-    const pad = Math.max(hi-lo, Math.abs(hi)*.02, panel.column===1?.02:2)*.1;
+    const pad = Math.max(hi-lo, Math.abs(hi)*.02, signal?1e-6:panel.column===1?.02:2)*.1;
     lo-=pad; hi+=pad;
     const y = value => panel.bottom-(value-lo)/(hi-lo)*(panel.bottom-panel.top);
     c.fillStyle=panel.color; c.textAlign="left"; c.font="600 9px Segoe UI, sans-serif";
@@ -82,12 +89,12 @@ export function draw() {
     for(let k=0;k<=4;k++){
       const v=lo+(hi-lo)*k/4, yy=y(v);
       c.beginPath();c.strokeStyle="#edf1f5";c.lineWidth=1;c.moveTo(g.left,yy);c.lineTo(g.right,yy);c.stroke();
-      c.fillStyle="#82929e";c.textAlign="right";c.fillText(number(v,panel.column===1?2:0),g.left-9,yy+3);
+      c.fillStyle="#82929e";c.textAlign="right";c.fillText(number(v,signal?3:panel.column===1?2:0),g.left-9,yy+3);
     }
     for(let k=0;k<=5;k++){
       const t=range[0]+(range[1]-range[0])*k/5, xx=x(t);
       c.beginPath();c.strokeStyle="#edf1f5";c.moveTo(xx,panel.top);c.lineTo(xx,panel.bottom);c.stroke();
-      if(panel.column===2){c.fillStyle="#82929e";c.textAlign="center";c.fillText(number((t-base)*factor,S.relative?1:2),xx,panel.bottom+18);}
+      if(panel===panels.at(-1)){c.fillStyle="#82929e";c.textAlign="center";c.fillText(number((t-base)*factor,S.relative?1:2),xx,panel.bottom+18);}
     }
     c.save();c.beginPath();c.rect(g.left,panel.top,g.right-g.left,panel.bottom-panel.top);c.clip();
     if(panel.column===1 && e && e.status==="valido"){
@@ -126,8 +133,10 @@ canvas.addEventListener("pointermove", e => {
   while(lo<hi){const mid=Math.floor((lo+hi)/2);if(points[mid][0]<t)lo=mid+1;else hi=mid;}
   const point=lo&&Math.abs(points[lo-1][0]-t)<Math.abs(points[lo][0]-t)?points[lo-1]:points[lo];
   const base=S.relative&&event()?event().tempo_s:0;
+  const signal=S.capture.metadata.tipo_medicao==="sinais";
   $("cursorReadout").textContent="t  "+units(point[0]-base,S.relative?1e6:1000,S.relative?"µs":"ms",3)+
-    "\nV  "+units(point[1],1,"V",4)+"\nI  "+units(point[2],1000,"mA",2)+"\nAmostra exibida";
+    (signal?S.capture.metadata.canais.map((ch,i)=>"\nCH"+ch.numero+"  "+units(point[i+1],1,"V",4)).join(""):
+      "\nV  "+units(point[1],1,"V",4)+"\nI  "+units(point[2],1000,"mA",2))+"\n"+t("Amostra exibida");
   $("cursorReadout").hidden=false;draw();
 });
 canvas.addEventListener("pointerup", e => {

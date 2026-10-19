@@ -1,3 +1,4 @@
+import { initMeasurement } from "./modules/measurement.js";
 import { renderJob, poll } from "./modules/jobs.js";
 import { initWorkbench } from "./modules/workbench.js";
 import { t } from "./modules/i18n.js";
@@ -33,7 +34,7 @@ async function connect() {
   } finally { S.busy = false; controls(); }
 }
 async function start(mode) {
-  if (!$("settingsForm").reportValidity() || !$("rigolForm").reportValidity()) return;
+  if (!$("settingsForm").reportValidity()) return;
   saveConfig(); say("");
   const cfg = config();
   if (mode === "demo") { cfg.ip = S.defaults.ip; cfg.port = S.defaults.port; }
@@ -48,7 +49,8 @@ document.querySelectorAll("[data-view]").forEach(button=>button.addEventListener
 inputs.filter(input=>input.id!=="timeDiv").forEach(input=>input.addEventListener("change",()=>{controls();saveConfig();}));
 $("settingsForm").addEventListener("submit",e=>{e.preventDefault();start("real");});
 $("connect").addEventListener("click",connect);
-$("jobReview").addEventListener("click",()=>currentConnection() ? showView("rigol") : connect());
+$("jobReview").addEventListener("click",()=>currentConnection() ? showView("measure") : connect());
+$("quickDemo").addEventListener("click",()=>start("demo"));
 $("demo").addEventListener("click",()=>start("demo"));
 $("emptyDemo").addEventListener("click",()=>start("demo"));
 $("cancel").addEventListener("click",async()=>{try{S.job=await api("/api/cancel",{});renderJob();controls();}catch(e){say(e.message,"error");}});
@@ -71,7 +73,7 @@ async function init(){
     const data=await api("/api/bootstrap");
     S.token=data.token;S.defaults=data.defaults;S.connection=data.connection;S.job=data.job;S.scope=data.scope;S.closed=data.closed;
     $("appVersion").textContent=data.version ? "· v"+data.version : "";
-    configureModels(data.models);
+    S.models=data.models;configureModels(data.models);
     configureTimebase(data.timebase);
     fillConfig(data.defaults);S.ready=true;controls();renderJob();document.dispatchEvent(new CustomEvent("rta:ready"));
     await refreshHistory();await poll();
@@ -84,6 +86,7 @@ async function init(){
 document.addEventListener("rta:view", e=>showView(e.detail));
 document.addEventListener("rta:job-render", renderJob);
 document.addEventListener("rta:event-render", renderEvent);
+initMeasurement();
 initWorkbench();
 initModels(()=>{ S.scope.snapshot=null; controls(); saveConfig(); });
 initRigol();

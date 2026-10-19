@@ -95,6 +95,8 @@ class App(Workbench):
             previous=detail.get("provenance") or {}
             source=dict(run=detail["id"],capture=capture["id"],metadata=capture["metadata"],
                         root_metadata=previous.get("root_metadata",previous.get("metadata",capture["metadata"])))
+            if capture["metadata"].get("tipo_medicao") == "sinais" or cfg["measurement"] != "transients":
+                raise Problem("A reanálise por transição está disponível apenas para transientes.")
             resistance=capture["metadata"]["resistor_ohm"]
             if "resistor" in payload.get("settings",{}) and cfg["resistor"]!=resistance:
                 raise Problem("A reanálise preserva o resistor e a conversão de corrente originais.")
@@ -233,7 +235,7 @@ class App(Workbench):
                     self.job.update(state="error", message=error or "O ensaio não foi concluído. Consulte os detalhes.")
                     if mode == "real":
                         clipped = re.fullmatch(
-                            r"CH([12]) saturou no ponto (\d+); confira escala, offset e conexoes\.", error)
+                            r"CH([1-4]) saturou no ponto (\d+); confira escala, offset e conexoes\.", error)
                         if clipped:
                             self.job["failure"] = dict(kind="clipping",
                                                       channel=int(clipped[1]), point=int(clipped[2]))
@@ -304,6 +306,7 @@ class App(Workbench):
             self.scope.update(busy=True, error="", snapshot=None)
         try:
             if action == "apply":
+                cfg = settings(cfg | {"configuration": "guided"})
                 # Reuse the C profile and its readback checks; never start a capture here.
                 command = self._command(None, "real", cfg, configuration_only=True)
                 result = subprocess.run(command, cwd=self.root, capture_output=True, text=True,

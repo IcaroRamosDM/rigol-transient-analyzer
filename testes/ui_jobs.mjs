@@ -80,7 +80,7 @@ await poll();
 assert.equal(element("start").disabled,false,"A missing trigger must not disconnect a responding Rigol");
 assert.equal(element("jobReview").hidden,false);
 assert.equal(element("jobReview").disabled,false);
-assert.match(element("jobRecovery").textContent,/gerador.*CH2/);
+assert.match(element("jobRecovery").textContent,/sinal.*canal.*nível de disparo/);
 assert.equal(element("jobSpinner").hidden,true);
 response.job = {...failed,id:"protocol-error",failure:{kind:"capture"}};
 await poll();

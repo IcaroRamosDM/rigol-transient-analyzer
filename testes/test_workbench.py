@@ -32,7 +32,7 @@ class SetupScope(MultiSessionScope):
             return b"#"+str(len(count)).encode()+count+data+b"\n"
         if command.startswith(":MEAS:ITEM?"):
             return {"VMIN,CHAN1":"4.9","VMAX,CHAN1":"5.1","VAVG,CHAN1":"5",
-                    "VMIN,CHAN2":"0","VMAX,CHAN2":".21","VBASE,CHAN2":"0",
+                    "VMIN,CHAN2":"0","VMAX,CHAN2":".21","VAVG,CHAN2":".105","VBASE,CHAN2":"0",
                     "VTOP,CHAN2":".21","FREQ,CHAN2":"1000","PDUT,CHAN2":".5"}[command.split(" ",1)[1]]
         return super().consulta(command)
     def configurar(self,command):

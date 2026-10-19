@@ -2,7 +2,7 @@ CC ?= gcc
 CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Iinclude
 CFLAGS ?= -std=c17 -O2 -g -Wall -Wextra -Wpedantic -Werror
 LDLIBS += -lm
-FONTES = src/main.c src/comum.c src/analise.c src/rigol.c src/modelos.c src/arquivos.c
+FONTES = src/main.c src/comum.c src/analise.c src/rigol.c src/modelos.c src/arquivos.c src/sinais.c
 OBJETOS = $(FONTES:src/%.c=build/%.o)
 DEPS = $(OBJETOS:.o=.d)
 PYTHON ?= python3
@@ -46,13 +46,19 @@ build/parametros_onda: parametros_onda.c | build
 build/test_analise: testes/test_analise.c src/analise.c src/comum.c include/carac.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) testes/test_analise.c src/analise.c src/comum.c $(LDLIBS) -o $@
 
-test: all build/test_analise
+build/test_sinais: testes/test_sinais.c $(filter-out src/main.c,$(FONTES)) include/carac.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) testes/test_sinais.c $(filter-out src/main.c,$(FONTES)) $(LDLIBS) -o $@
+
+test: all build/test_analise build/test_sinais
 	./build/test_analise
+	./build/test_sinais
 	$(PYTHON) -m unittest discover -s testes -p 'test_*.py' -v
 
 sanitize: | build
 	$(CC) $(CPPFLAGS) -std=c17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer testes/test_analise.c src/analise.c src/comum.c $(LDLIBS) -o build/test_analise_sanitize
 	./build/test_analise_sanitize
+	$(CC) $(CPPFLAGS) -std=c17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer testes/test_sinais.c $(filter-out src/main.c,$(FONTES)) $(LDLIBS) -o build/test_sinais_sanitize
+	./build/test_sinais_sanitize
 	$(CC) $(CPPFLAGS) -std=c17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer $(FONTES) $(LDLIBS) -o build/carac_transientes_sanitize
 	CT_BIN=$(CURDIR)/build/carac_transientes_sanitize $(PYTHON) -m unittest discover -s testes -p 'test_*.py' -v
 

@@ -46,7 +46,18 @@ def self_test(destination):
         file=store.download(capture.parent.name,"","reports/"+pdf["file"])
         if not file.read_bytes().startswith(b"%PDF-"):
             raise RuntimeError("Bundled PDF generator failed.")
-        Path(destination).write_text(json.dumps(dict(pdf=True,version=VERSION, platform=sys.platform,
+        signal_run=base/"resultados ação/sinais_001"
+        signal_command=[str(core_executable()),"--tipo","sinais","--canal","1:10:1:0:DC:20M",
+                        "--canal","2:1:1:0:DC:20M","--simular","--pontos","1000","--graficos","--saida",str(signal_run)]
+        result=subprocess.run(signal_command,env=env,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=90,**hidden_process())
+        if result.returncode:raise RuntimeError("Signal core self-test failed: "+(result.stderr or result.stdout)[-1200:])
+        signal_meta=store.detail(signal_run.name)["captures"][0]["metadata"]
+        signal_pdf=report(store,dict(run=signal_run.name,capture="captura_001",language="en",notes="Signals runtime check"))
+        if signal_meta["tipo_medicao"]!="sinais" or len(signal_meta["canais"])!=2 or not (signal_run/"captura_001/graficos/visao_geral.png").is_file():
+            raise RuntimeError("Signals bundle validation failed.")
+        if not store.download(signal_run.name,"","reports/"+signal_pdf["file"]).read_bytes().startswith(b"%PDF-"):
+            raise RuntimeError("Signals PDF validation failed.")
+        Path(destination).write_text(json.dumps(dict(pdf=True,signals=True,signal_channels=2,version=VERSION, platform=sys.platform,
             packaged=FROZEN, core="windows-x64", samples=meta["pontos"], pngs=len(pngs),
             models=models, unicode_paths=True), indent=2) + "\n", encoding="utf-8")
     return 0

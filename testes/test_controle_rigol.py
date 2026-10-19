@@ -28,7 +28,7 @@ class MultiSessionScope(Instrumento):
         super().__init__()
         self.parametros.update({":TIM:MAIN:SCAL": ".0002", ":ACQ:MDEP": "1000000",
             ":TRIG:EDGE:SOUR": "CHAN2", ":TRIG:EDGE:SLOP": "POS", ":TRIG:EDGE:LEV": ".1"})
-        for channel, probe, scale, offset in [(1, 10, .5, -5), (2, 1, .1, 0)]:
+        for channel, probe, scale, offset in [(1, 10, .5, -5), (2, 1, .1, 0), (3, 1, 1, 0), (4, 1, 1, 0)]:
             for name, value in {"PROB":probe, "SCAL":scale, "OFFS":offset,
                                 "COUP":"DC", "BWL":"20M", "DISP":1}.items():
                 self.parametros[f":CHAN{channel}:{name}"] = str(value)
