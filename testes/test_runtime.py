@@ -28,6 +28,14 @@ class InstanceTests(unittest.TestCase):
             finally:
                 first.close(); second.close()
 
+    def test_windows_browser_launch_does_not_wait_or_hold_the_app_executable(self):
+        with mock.patch.object(harness.ui.os,"name","nt"),mock.patch.object(harness.ui.subprocess,"Popen") as launch:
+            harness.ui.open_browser("http://localhost:8765")
+        args=launch.call_args
+        self.assertTrue(args.args[0][0].endswith("rundll32.exe"))
+        self.assertEqual(args.args[0][1:],["url.dll,FileProtocolHandler","http://localhost:8765"])
+        self.assertEqual(args.kwargs["creationflags"],0x08000000)
+
     def test_user_data_overrides_do_not_depend_on_install_folder(self):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)

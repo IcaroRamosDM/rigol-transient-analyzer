@@ -61,6 +61,10 @@ class Handler(BaseHTTPRequestHandler):
                                version=VERSION, packaged=FROZEN, defaults=DEFAULTS, models=list(MODELS.values()), timebase=TIMEBASE, **app.snapshot()))
             elif url.path == "/api/status":
                 self.json(app.snapshot())
+            elif url.path == "/api/profiles":
+                self.json(app.profiles.list())
+            elif url.path == "/api/backups":
+                self.json(app.backups.list())
             elif url.path == "/api/history":
                 self.json(app.history())
             elif url.path == "/api/run":
@@ -76,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
                     shutil.copyfileobj(stream, self.wfile, 65536)
             elif url.path in ("/", "/app.js", "/style.css", "/modules/core.js",
                               "/modules/chart.js", "/modules/results.js", "/modules/rigol.js", "/modules/timebase.js", "/modules/models.js",
-                              "/assets/circuit.svg", "/rigol.css"):
+                              "/assets/circuit.svg", "/assets/circuit-en.svg", "/rigol.css", "/modules/workbench.js", "/modules/i18n.js", "/workbench.css"):
                 file = app.root / "interface/static" / ("index.html" if url.path == "/" else url.path[1:])
                 data = file.read_bytes()
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[file.suffix]
@@ -104,6 +108,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(app.connect(data))
             elif self.path == "/api/run":
                 self.json(app.start(data), 202)
+            elif self.path == "/api/profile":
+                self.json(app.save_profile(data))
+            elif self.path == "/api/profile/delete":
+                self.json(app.profiles.delete(data.get("id")))
+            elif self.path == "/api/diagnose":
+                self.json(app.diagnose(data))
+            elif self.path == "/api/backup":
+                self.json(app.backup(data),201)
+            elif self.path == "/api/restore":
+                self.json(app.restore(data))
+            elif self.path == "/api/compare":
+                self.json(app.compare(data))
+            elif self.path == "/api/report":
+                self.json(app.report(data),201)
             elif self.path == "/api/scope":
                 self.json(app.scope_action(data))
             elif self.path == "/api/cancel":
@@ -119,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise Problem("Operação desconhecida.", 404)
         except Problem as error:
             self.json(dict(error=str(error)), error.status)
-        except (ValueError, KeyError, OSError):
+        except (ValueError, TypeError, OverflowError, KeyError, OSError):
             self.json(dict(error="Pedido inválido."), 400)
 
 

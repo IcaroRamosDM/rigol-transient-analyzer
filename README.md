@@ -15,7 +15,11 @@ measurements, summaries, statistics, and optional plots.
 
 ## Features
 
-- Local browser interface for instrument setup, measurements, plots, and history.
+- Local browser interface in Portuguese and English for setup, measurements, plots, and history.
+- Named bench profiles, read-only signal checks, and device-bound setup backup/restore.
+- Comparison of up to four saved records aligned at load transitions.
+- Saved-capture reanalysis preserving original samples and recording provenance.
+- Bilingual PDF reports with vector plots, analysis criteria, and observations.
 - Automatic model detection or manual selection, checked against instrument identity.
 - Model-specific timebase and vertical-scale limits from a shared profile catalog.
 - Scope configuration with readback, continuous visualization, and RUN/STOP controls.
@@ -30,9 +34,9 @@ measurements, summaries, statistics, and optional plots.
 - Offline simulation and reanalysis of saved samples.
 
 Acquisition and analysis run in C. Python serves the local interface;
-Matplotlib generates optional PNG plots. The interface, command options,
-console messages, and exported field names use Portuguese; this guide
-explains their meaning.
+Matplotlib generates optional PNG plots. The interface and PDF reports support Portuguese and English. Command options,
+raw core logs, exported field names, and legacy PNG labels retain Portuguese;
+this guide explains their meaning.
 
 ## Instrument compatibility
 
@@ -105,25 +109,34 @@ again opens the existing instance.
 | --- | --- |
 | `%LOCALAPPDATA%\Programs\RigolTransientAnalyzer` | Default application installation |
 | Windows Documents folder → `Rigol Transient Analyzer\resultados` | Measurements, CSV/JSON exports, and PNGs |
-| `%LOCALAPPDATA%\RigolTransientAnalyzer` | Instance state, caches, and `logs\application.log` |
+| `%LOCALAPPDATA%\RigolTransientAnalyzer` | Named profiles, setup backups, instance state, caches, and `logs\application.log` |
 
 The actual Windows Documents location is used, including redirected
 folders. The Start-menu **Resultados** shortcut opens the measurements
 folder. Use **Encerrar aplicativo** in the interface to stop the background
 application; closing the browser alone leaves it available for reopening.
 
+Profiles are stored in the application-data profiles/ directory; full setup
+backups are in backups/. Source installations use build/ for this data by default.
+Keep setup files together with their metadata and firmware information.
+
 Run a newer installer to update the application. Finish or cancel an
-active measurement first: the installer refuses to update or uninstall
+active measurement first: the installer waits for executable files to be released and refuses to update or uninstall
 while a measurement or scope-control operation is active. Uninstall from
-Windows Settings → Apps → Installed apps. Saved measurements and per-user
+Windows Settings → Apps → Installed apps. Saved measurements, profiles, backups and per-user
 application data are preserved.
+
+If the installer still reports files in use after finishing/cancelling the
+measurement and closing the application, open Windows Task Manager → Details,
+end leftover RigolTransientAnalyzer.exe entries and retry. This can recover a
+stalled browser-launch process from an older version.
 
 The current installer is not digitally signed. A `SHA256SUMS.txt` file is
 provided with the release. To calculate a downloaded installer's checksum
 in PowerShell, replace the filename with the version you downloaded:
 
 ```powershell
-Get-FileHash .\RigolTransientAnalyzer-0.1.0-windows-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\RigolTransientAnalyzer-0.2.0-windows-x64-setup.exe -Algorithm SHA256
 ```
 
 Compare the value with the release checksum file. Physical model-validation
@@ -131,7 +144,7 @@ status remains as documented in the compatibility table above.
 
 ## Build from source on Linux or WSL
 
-Requirements are a C17 compiler, GNU Make, and Python 3 with virtual
+Requirements are a C17 compiler, GNU Make, and Python 3.11 or newer with virtual
 environment support for integration tests and optional plots.
 
 On Ubuntu:
@@ -185,7 +198,9 @@ provides the native application described above. The Windows launcher defaults t
 with `iniciar-interface.cmd -Distribution NAME`. On Linux, `./iniciar-interface.sh` builds the
 executable and starts the interface.
 
-The interface is in Portuguese and has four work areas:
+Use **Idioma / Language** to switch between Portuguese and English.
+The choice is saved in this browser. Switching reloads the page and is
+disabled during active operations. The interface has five work areas:
 
 1. **Medição (measurement):** select **Modelo do Rigol** or leave
    **Detectar automaticamente**, enter the scope IP, and click **Conectar**.
@@ -201,6 +216,8 @@ The interface is in Portuguese and has four work areas:
 4. **Histórico (history):** open saved runs, select captures and transitions,
    and download samples, event metrics, configuration, statistics, and
    available PNG images.
+5. **Comparar (compare):** overlay two to four saved records aligned at a
+   selected load transition and compare their metrics.
 
 ### Configure the scope from the interface
 
@@ -278,6 +295,98 @@ local port (close an already running instance first):
 ```bash
 make interface UI_ARGS="--no-browser --port 8766"
 ```
+
+### Named bench profiles
+
+In **Rigol → Perfis salvos (saved profiles)**, enter a profile name and click
+**Salvar como novo (save as new)**. Profiles include the instrument address/model,
+probe factors, acquisition settings, sense resistance and analysis criteria.
+Select an existing profile to load, update or remove it. Up to 100 uniquely
+named profiles are supported. When automatic detection identifies a connected
+instrument at that address, the saved profile records its concrete model and limits.
+
+**Carregar no formulário (load into form)** only fills the controls.
+Review the physical probe switches, then use **Aplicar e visualizar** to send
+the acquisition settings. Supply and generator adjustments remain manual.
+Removed profiles retain a recovery copy in application data.
+
+### Read-only signal checks
+
+After connecting, click **Verificar sinais antes de medir (check signals before
+measuring)**. The check reads current settings and measurements to check channel
+visibility, configured probe factors, DC coupling, vertical range, load-step
+levels, frequency, duty cycle and analysis-window duration.
+
+Unavailable readings remain inconclusive. A frozen record is explicitly
+flagged: its readings describe that record, not a fresh acquisition.
+The check does not change settings or trigger a capture. It cannot read the
+physical 1x/10x switches or certify correct wiring.
+
+### Setup backup and restore
+
+In **Rigol → Backup dos ajustes do Rigol (Rigol settings backup)**, click
+**Guardar ajustes atuais (back up current settings)**. The full system setup
+is transferred to this computer with its SHA-256 checksum, model, serial number,
+firmware and a settings readback.
+
+To preserve settings before a real measurement, enable **Criar backup do Rigol
+antes da medição real (back up Rigol settings before real measurement)**.
+Acquisition starts only after that backup succeeds. This option is off by
+default; demo and file reanalysis never contact the instrument.
+
+To restore, connect the same instrument, select its backup and click
+**Restaurar backup selecionado (restore selected backup)**. A damaged file or
+a different model, serial number or firmware is rejected. The application
+creates a recovery backup first, sends the saved setup, then verifies CH1/CH2,
+timebase, memory and edge-trigger settings by readback. The transferred setup
+contains settings beyond those explicitly verified fields.
+
+Restoration is an explicit action; finishing a measurement does not automatically
+restore settings. If readback fails, the recovery copy and its identifier remain
+available. This flow was physically validated on the reference DHO802 firmware
+00.01.05; other models remain pending physical validation.
+
+### Compare saved runs
+
+Open **Comparar (compare)** or **Comparar com outro ensaio (compare with another
+run)**. Choose two to four runs, a capture and a valid transition for each,
+then click **Comparar registros (compare records)**. Directions must match.
+
+Plots share a time axis centered at each load step. The table shows current
+change, sag, overshoot and settling time; parentheses show differences from
+the first record. Missing settling times remain unavailable. Different analysis
+criteria produce a visible warning. Metrics use the complete records; plots
+use extrema-preserving reduction.
+
+### Reanalyze a capture
+
+Expand **Reanalisar esta captura (reanalyze this capture)** below a result.
+Adjust thresholds, average window, guard, horizon, tolerance or hold time,
+then click **Criar nova análise (create new analysis)**.
+
+The C analyzer reads the saved samples into a new run labeled **Reanálise de
+arquivo (file reanalysis)**. It neither contacts the scope nor changes the
+original files. Existing current conversion and sense resistance are preserved.
+A `proveniencia.json` record identifies the source run, capture, original
+timestamp/origin and sample SHA-256. Use **Abrir registro original (open original
+record)** to return to that source.
+
+### PDF reports
+
+Expand **Gerar relatório PDF (generate PDF report)**. Enter optional observations
+(up to 4,000 characters), click **Gerar PDF (generate PDF)** and then **Baixar
+relatório (download report)**.
+
+The selected interface language is used for the report. It includes data origin,
+instrument, timestamp, sense resistance, sample count, analysis criteria,
+voltage/current vector plots and event metrics. Simulations and reanalyses
+are explicitly labeled. Tables and long notes are paginated. For bounded output
+size, the table shows the first 200 events; the complete list remains in CSV.
+Each export creates a separate PDF under the run's `reports/` directory.
+
+The PDF runtime is bundled in the Windows installer. Source users install
+dependencies with `make dependencias` and start the server using
+`.venv/bin/python interface/servidor.py`.
 
 ## Reference bench setup
 
@@ -527,6 +636,8 @@ resultados/ensaio_.../
 | `resumo.txt` | Human-readable capture summary |
 | `estatisticas.csv` | Counts, means, sample standard deviations, minima, and maxima by direction |
 | `execucao.json` | Completed data export and run totals |
+| `proveniencia.json` | Source metadata and sample checksum for interface reanalyses |
+| `reports/` | Individually exported bilingual PDF reports |
 | `graficos/` | Overview and event-detail PNGs, plus a plot manifest |
 
 In exported directions, `subida` means rising current and `descida` means
@@ -563,7 +674,11 @@ before control commands are sent.
 Run `make test` for C analysis and Python unit/integration checks, and
 `make sanitize` for the same checks with AddressSanitizer and
 UndefinedBehaviorSanitizer. Protocol fixtures use local simulated
-instruments. The JavaScript timebase contract is in
+instruments. Workflow tests cover profile persistence, diagnostics, backup
+integrity/identity and restore readback, operation exclusion, immutable reanalysis,
+aligned comparisons, bilingual PDFs, translation coverage and HTTP request guards.
+JavaScript syntax checks run when Node.js is available; set NODE to its executable
+path when it is not in PATH. The JavaScript timebase contract is in
 `testes/test_timebase.mjs`; it is a separate check and is not run by
 `make test`.
 
@@ -588,6 +703,9 @@ operation separately from electrical interpretation of the waveforms.
 | `interface/rta/runtime.py`, `instance.py`, `process.py` | Platform paths, instance lock, and cancellation |
 | `packaging/windows/` | Native launcher, dependency pins, manifests, installer builder, and smoke tests |
 | `interface/rta/` | Settings, model profiles, scope control, jobs, results, and HTTP API |
+| `interface/rta/profiles.py`, `backups.py`, `diagnostics.py` | Profiles and instrument checks/setup protection |
+| `interface/rta/comparison.py`, `reports.py`, `workbench.py` | Comparisons, PDFs and workflow coordination |
+| `interface/static/modules/workbench.js`, `i18n.js` | Workbench panels and presentation translations |
 | `interface/static/modules/` | Browser modules for controls, models, timebase, charts, and results |
 | `interface/static/assets/circuit.svg` | Reference circuit diagram |
 | `interface/iniciar-windows.ps1` | Windows-to-WSL launcher |
@@ -616,7 +734,7 @@ py -3.14 -m venv .venv-windows
 
 The builder compiles the native core, freezes the application and plotting
 runtime, generates version resources and third-party notices, exercises a
-Unicode-path simulation with PNG export, and creates the installer and
+Unicode-path simulation with PNG and PDF export, and creates the installer and
 checksums under `dist\windows`. Build dependencies are pinned separately
 from the runtime requirements used by source installations.
 
@@ -628,13 +746,14 @@ the bundled Python application must be built on Windows.
 
 `packaging/windows/smoke.py` verifies an actual installation with Python
 and WSL absent from the application's PATH, demonstration PNGs and
-downloads, single-instance behavior, cancellation, refusal of updates
+downloads, profiles, comparison, reanalysis, bilingual PDFs, backup/restore, diagnostics,
+single-instance behavior, cancellation, refusal of updates
 during acquisition, and preservation of results on upgrade/uninstall.
 Run it on a Windows account without an existing installed copy, using a
 new empty test directory:
 
 ```powershell
-.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.1.0-windows-x64-setup.exe --work dist\windows\smoke-test
+.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.2.0-windows-x64-setup.exe --work dist\windows\smoke-test
 ```
 
 Instrument references:

@@ -1,8 +1,9 @@
+import { t } from "./i18n.js";
 import { $, S, origins, api, say, number, units, date } from "./core.js";
 import { canvas, loadWave } from "./chart.js";
 function badge(origin) {
   const b = document.createElement("span");
-  const pair = origins[origin] || ["Origem desconhecida", "neutral"];
+  const pair = origins[origin] || [t("Origem desconhecida"), "neutral"];
   b.className = "badge " + pair[1]; b.textContent = pair[0]; return b;
 }
 export async function refreshHistory() {
@@ -15,7 +16,7 @@ export async function refreshHistory() {
     const name = document.createElement("td");
     const strong = document.createElement("strong"); strong.textContent = date(run.date);
     const small = document.createElement("small");
-    small.textContent = run.id + (run.complete ? "" : " · exportação parcial");
+    small.textContent = run.id + (run.complete ? "" : t(" · exportação parcial"));
     name.append(strong, small); row.append(name);
     const origin = document.createElement("td"); origin.append(badge(run.origin)); row.append(origin);
     for (const value of [run.captures, run.valid]) {
@@ -23,7 +24,7 @@ export async function refreshHistory() {
     }
     const action = document.createElement("td");
     const button = document.createElement("button");
-    button.className = "button secondary"; button.textContent = "Abrir ensaio";
+    button.className = "button secondary"; button.textContent = t("Abrir ensaio");
     button.addEventListener("click", () => openRun(run.id).catch(error => say(error.message, "error")));
     action.append(button); row.append(action); $("historyRows").append(row);
   }
@@ -39,7 +40,7 @@ export async function openRun(id) {
   $("captureSelect").replaceChildren();
   detail.captures.forEach((capture, i) => {
     const option = document.createElement("option");
-    option.value = i; option.textContent = "Captura " + (i + 1); $("captureSelect").append(option);
+    option.value = i; option.textContent = t("Captura ") + (i + 1); $("captureSelect").append(option);
   });
   document.dispatchEvent(new CustomEvent("rta:view", {detail:"measure"}));
   $("emptyPanel").hidden = true; $("resultPanel").hidden = false;
@@ -49,35 +50,39 @@ export async function selectCapture(index) {
   S.capture = S.run.captures[index];
   S.range = null; S.relative = false; S.data = null;
   canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-  $("displayCount").textContent = "Carregando registro completo…";
-  $("waveRange").textContent = "Carregando amostras…";
+  $("displayCount").textContent = t("Carregando registro completo…");
+  $("waveRange").textContent = t("Carregando amostras…");
   const meta = S.capture.metadata;
-  const origin = origins[meta.origem] || ["Origem desconhecida", "neutral"];
+  const origin = origins[meta.origem] || [t("Origem desconhecida"), "neutral"];
   $("originBadge").className = "badge " + origin[1];
   $("originBadge").textContent = origin[0];
   $("resultDate").textContent = date(meta.instante_utc);
-  $("resultTitle").textContent = "Captura " + (index + 1) + " de " + S.run.captures.length;
-  $("resultIdentity").textContent = meta.instrumento;
+  $("resultTitle").textContent = t("Captura ") + (index + 1) + t(" de ") + S.run.captures.length;
+  const original=S.run.provenance?.root_metadata||S.run.provenance?.metadata;
+  $("resultIdentity").textContent = t(original?.instrumento||meta.instrumento);
   $("sourceNotice").className = "source-notice" + (meta.origem === "SIMULACAO" ? " demo-notice" : "");
   $("sourceNotice").textContent = meta.origem === "SIMULACAO" ?
-    "Sinal sintético para explorar a interface. Este ensaio não acionou o osciloscópio." :
-    meta.origem === "ARQUIVO" ? "Reanálise de um arquivo salvo; não representa uma nova aquisição." :
-    "Registro físico salvo em " + date(meta.instante_utc) + ". O gráfico exibe esta captura, sem atualização contínua.";
+    t("Sinal sintético para explorar a interface. Este ensaio não acionou o osciloscópio.") :
+    meta.origem === "ARQUIVO" ? t("Reanálise de um arquivo salvo; não representa uma nova aquisição.") :
+    t("Registro físico salvo em ") + date(meta.instante_utc) + t(". O gráfico exibe esta captura, sem atualização contínua.");
+  $("openOriginal").hidden=!S.run.provenance;
+  if(S.run.provenance)$("sourceNotice").textContent+=" "+t("Registro original:")+" "+date(S.run.provenance.metadata.instante_utc)+" · "+(origins[S.run.provenance.metadata.origem]?.[0]||S.run.provenance.metadata.origem);
   $("meanV").textContent = units(meta.media_tensao_v, 1, "V", 3);
   $("meanI").textContent = units(meta.media_corrente_a, 1000, "mA", 1);
   $("validEvents").textContent = meta.eventos_validos + " / " + meta.bordas;
-  $("pointCount").textContent = number(meta.pontos, 0) + " pontos por canal";
+  $("pointCount").textContent = number(meta.pontos, 0) + t(" pontos por canal");
   $("eventSelect").replaceChildren();
   S.capture.events.forEach((event, i) => {
     const option = document.createElement("option");
-    option.value = i; option.textContent = "Evento " + event.evento + " · " +
-      (event.direcao === "subida" ? "subida" : "descida") + (event.status === "valido" ? "" : " ⚠");
+    option.value = i; option.textContent = t("Evento ") + event.evento + " · " +
+      (event.direcao === "subida" ? t("subida") : t("descida")) + (event.status === "valido" ? "" : " ⚠");
     $("eventSelect").append(option);
   });
   S.event = S.capture.events.findIndex(e => e.status === "valido" && e.direcao === "subida");
   if (S.event < 0) S.event = S.capture.events.length ? 0 : -1;
   $("eventSelect").value = S.event;
   renderEvent(); exports(); await loadWave();
+  document.dispatchEvent(new CustomEvent("rta:capture"));
 }
 export function event() { return S.capture && S.capture.events[S.event]; }
 export function renderEvent() {
@@ -87,22 +92,22 @@ export function renderEvent() {
   $("nextEvent").disabled = S.event >= S.capture.events.length - 1;
   $("eventSelect").disabled = S.capture.events.length === 0;
   $("eventWindow").disabled = !e; $("edgeZoom").disabled = !e;
-  const reasons = {janela_antes_incompleta: "Janela anterior incompleta.",
-    janela_depois_incompleta: "Janela posterior incompleta.",
-    outra_borda_na_janela: "Outra mudança de carga está dentro da janela de análise."};
-  $("eventDescription").textContent = !e ? "Nenhuma transição foi detectada neste registro." :
-    !valid ? (reasons[e.status] || "Evento indisponível.") + " Os dados permanecem visíveis no gráfico." :
-    (e.direcao === "subida" ? "Aumento" : "Redução") + " de carga em t = " +
-      units(e.tempo_s, 1000, "ms", 4) + ". Métricas calculadas sobre o registro completo.";
+  const reasons = {janela_antes_incompleta: t("Janela anterior incompleta."),
+    janela_depois_incompleta: t("Janela posterior incompleta."),
+    outra_borda_na_janela: t("Outra mudança de carga está dentro da janela de análise.")};
+  $("eventDescription").textContent = !e ? t("Nenhuma transição foi detectada neste registro.") :
+    !valid ? (reasons[e.status] || t("Evento indisponível.")) + t(" Os dados permanecem visíveis no gráfico.") :
+    (e.direcao === "subida" ? t("Aumento") : t("Redução")) + t(" de carga em t = ") +
+      units(e.tempo_s, 1000, "ms", 4) + t(". Métricas calculadas sobre o registro completo.");
   $("deltaI").textContent = valid ? units(e.delta_i_a, 1000, "mA") : "—";
   $("sag").textContent = valid ? units(e.afundamento_v, 1000, "mV") : "—";
   $("overshoot").textContent = valid ? units(e.sobretensao_v, 1000, "mV") : "—";
   $("settling").textContent = valid && e.acomodado ? units(e.acomodacao_s, 1e6, "µs") :
-    valid ? "Não observada" : "Indisponível";
-  $("eventVoltage").textContent = valid ? "Média: " + units(e.v_antes_v, 1, "V", 3) +
+    valid ? t("Não observada") : t("Indisponível");
+  $("eventVoltage").textContent = valid ? t("Média: ") + units(e.v_antes_v, 1, "V", 3) +
     " → " + units(e.v_depois_v, 1, "V", 3) : "";
-  $("eventTolerance").textContent = "Faixa ±" + units(meta.tolerancia_v, 1000, "mV", 0) +
-    " · horizonte " + units(meta.horizonte_s, 1e6, "µs", 0);
+  $("eventTolerance").textContent = t("Faixa ±") + units(meta.tolerancia_v, 1000, "mV", 0) +
+    t(" · horizonte ") + units(meta.horizonte_s, 1e6, "µs", 0);
   exports();
 }
 function exports() {
@@ -115,13 +120,13 @@ function exports() {
     a.href = "/download?" + query; a.textContent = label; a.download = name.split("/").pop();
     $("exportLinks").append(a);
   }
-  link("amostras.csv", "Amostras · CSV"); link("eventos.csv", "Transições · CSV");
-  link("resumo.txt", "Resumo · texto"); link("metadados.json", "Configuração · JSON");
-  if (S.run.execution.concluido) link("estatisticas.csv", "Estatísticas · CSV", false);
-  if (S.capture.images.includes("visao_geral.png")) link("graficos/visao_geral.png", "Visão geral · PNG");
+  link("amostras.csv", t("Amostras · CSV")); link("eventos.csv", t("Transições · CSV"));
+  link("resumo.txt", t("Resumo · texto")); link("metadados.json", t("Configuração · JSON"));
+  if (S.run.execution.concluido) link("estatisticas.csv", t("Estatísticas · CSV"), false);
+  if (S.capture.images.includes("visao_geral.png")) link("graficos/visao_geral.png", t("Visão geral · PNG"));
   const e = event();
   if (e) {
     const name = "evento_" + String(e.evento).padStart(3, "0") + "_" + e.direcao + ".png";
-    if (S.capture.images.includes(name)) link("graficos/" + name, "Evento selecionado · PNG");
+    if (S.capture.images.includes(name)) link("graficos/" + name, t("Evento selecionado · PNG"));
   }
 }

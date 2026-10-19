@@ -70,7 +70,7 @@ def notices(folder, extra):
     folder.mkdir(parents=True, exist_ok=True)
     lines = ["Third-party components in Rigol Transient Analyzer", ""]
     packages = ["pyinstaller", "matplotlib", "numpy", "pillow", "contourpy", "cycler",
-                "fonttools", "kiwisolver", "packaging", "pyparsing", "python-dateutil", "six"]
+                "reportlab", "charset-normalizer", "fonttools", "kiwisolver", "packaging", "pyparsing", "python-dateutil", "six"]
     for name in packages:
         dist = importlib.metadata.distribution(name)
         lines.append(name + " " + dist.version)
@@ -144,7 +144,7 @@ def main():
         "--add-data", str(ROOT / "VERSION") + os.pathsep + ".",
         "--add-data", str(ROOT / "README.md") + os.pathsep + ".",
         "--add-data", str(licenses) + os.pathsep + "third-party-licenses",
-        "--hidden-import", "matplotlib.backends.backend_agg",
+        "--hidden-import", "matplotlib.backends.backend_agg", "--collect-data", "reportlab",
         "--copy-metadata", "matplotlib", "--copy-metadata", "numpy"]
     for name in ("tkinter", "PyQt5", "PyQt6", "PySide2", "PySide6", "IPython", "pytest"):
         command += ["--exclude-module", name]

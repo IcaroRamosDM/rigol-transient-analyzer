@@ -61,7 +61,11 @@ class ResultStore:
             execution = read_json(self.inside(path, "execucao.json"))
         except (OSError, ValueError, Problem):
             execution = {}
-        return dict(id=run, captures=captures, execution=execution)
+        try:
+            provenance=read_json(self.inside(path,"proveniencia.json"))
+        except (OSError,ValueError,Problem):
+            provenance=None
+        return dict(id=run, captures=captures, execution=execution,provenance=provenance)
 
     def history(self):
         history = []
@@ -148,6 +152,8 @@ class ResultStore:
                     r"graficos/(?:visao_geral|evento_\d+_(?:subida|descida))\.png", name):
                 raise Problem("Exportação desconhecida.", 404)
             return self.inside(root, capture + "/" + name)
-        if name not in {"execucao.json", "estatisticas.csv"}:
+        if re.fullmatch(r"reports/report_[a-f0-9]{32}\.pdf",name):
+            return self.inside(root,name)
+        if name not in {"execucao.json", "estatisticas.csv","proveniencia.json"}:
             raise Problem("Exportação desconhecida.", 404)
         return self.inside(root, name)

@@ -18,13 +18,21 @@ from .commands import build_command
 from .models import MODELS, identify, selected_model
 from .runtime import FROZEN, results_dir, core_executable, hidden_process, process_environment
 from .process import KILL, signal_process, session_options
+from .runtime import state_dir
+from .profiles import ProfileStore
+from .backups import BackupStore
+from .workbench import Workbench
+import hashlib
 
-class App:
-    def __init__(self, root=ROOT, results=None, executable=None):
+class App(Workbench):
+    def __init__(self, root=ROOT, results=None, executable=None, state=None):
         self.root = Path(root).resolve()
         self.results = Path(results if results is not None else results_dir()).resolve()
         self.results.mkdir(exist_ok=True, parents=True)
         self.executable = Path(executable or core_executable())
+        self.userdata=Path(state if state is not None else self.results.parent/"state" if results is not None else state_dir()).resolve()
+        self.profiles=ProfileStore(self.userdata/"profiles")
+        self.backups=BackupStore(self.userdata/"backups")
         self.instance_id = uuid.uuid4().hex
         self.token = secrets.token_urlsafe(32)
         self.lock = threading.RLock()
@@ -71,9 +79,28 @@ class App:
 
     def start(self, payload):
         mode = payload.get("mode")
-        if mode not in ("real", "demo"):
+        if mode not in ("real", "demo", "reanalysis"):
             raise Problem("Selecione medição real ou demonstração.")
         cfg = settings(payload.get("settings", {}), self.connection.get("model"))
+        source=None
+        if mode=="reanalysis":
+            origin=payload.get("source",{})
+            if not isinstance(origin,dict):
+                raise Problem("Captura inválida.")
+            detail=self.store.detail(origin.get("run",""))
+            capture=next((c for c in detail["captures"] if c["id"]==origin.get("capture")),None)
+            if capture is None:
+                raise Problem("Captura inválida.")
+            previous=detail.get("provenance") or {}
+            source=dict(run=detail["id"],capture=capture["id"],metadata=capture["metadata"],
+                        root_metadata=previous.get("root_metadata",previous.get("metadata",capture["metadata"])))
+            resistance=capture["metadata"]["resistor_ohm"]
+            if "resistor" in payload.get("settings",{}) and cfg["resistor"]!=resistance:
+                raise Problem("A reanálise preserva o resistor e a conversão de corrente originais.")
+            cfg["resistor"]=resistance
+            cfg["captures"]=1
+        if not isinstance(payload.get("backup",False),bool):
+            raise Problem("Opção de backup inválida.")
         # The demonstration is explicitly advertised as a quick 10k-sample run.
         if mode == "demo":
             cfg["points"] = 10000
@@ -96,12 +123,16 @@ class App:
             run = "ui_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:8]
             self.job = dict(id=run, mode=mode, state="running", phase="preparando",
                             message="Preparando o ensaio", capture=0, total=cfg["captures"],
-                            started_at=now(), settings=cfg, logs=[], cancel_requested=False)
+                            started_at=now(), settings=cfg, logs=[], cancel_requested=False, source=source, backup_requested=payload.get("backup",False), backup_id=None)
             threading.Thread(target=self._work, args=(run, mode, cfg), daemon=True).start()
             return self.snapshot()["job"]
 
     def _command(self, run, mode, cfg, configuration_only=False):
-        return build_command(self.executable, self.results, run, mode, cfg, configuration_only)
+        source=None
+        if mode=="reanalysis":
+            origin=self.job["source"]
+            source=self.store.download(origin["run"],origin["capture"],"amostras.csv")
+        return build_command(self.executable, self.results, run, mode, cfg, configuration_only,input_file=source)
     def _work(self, run, mode, cfg):
         process = None
         error = ""
@@ -111,6 +142,16 @@ class App:
             with self.lock:
                 cancelled = self.job["cancel_requested"]
             if not cancelled:
+                if mode=="real" and self.job["backup_requested"]:
+                    backup=self.backups.create(cfg,"Before measurement")
+                    with self.lock:
+                        self.job["backup_id"]=backup["id"]
+                provenance=None
+                if mode=="reanalysis":
+                    original=self.job["source"]
+                    file=self.store.download(original["run"],original["capture"],"amostras.csv")
+                    with file.open("rb") as stream:
+                        provenance=dict(**original,sha256=hashlib.file_digest(stream,"sha256").hexdigest())
                 env = process_environment()
                 env["RTA_PROGRESS"] = "1"
                 if os.name == "nt":
@@ -140,7 +181,10 @@ class App:
                                 error = line[5:].strip()
                 process.stdout.close()
                 code = process.wait()
-        except (OSError, ValueError) as exc:
+                if mode=="reanalysis" and code in (0,2):
+                    with (self.results/run/"proveniencia.json").open("x",encoding="utf-8") as file:
+                        json.dump(provenance,file,ensure_ascii=False,allow_nan=False)
+        except (OSError, ValueError, Problem) as exc:
             error = str(exc)
         finally:
             if process and process.poll() is None:

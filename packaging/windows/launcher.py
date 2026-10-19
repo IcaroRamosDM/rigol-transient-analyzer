@@ -27,19 +27,26 @@ def self_test(destination):
         env["RTA_STATE_DIR"] = str(base / "estado")
         env["MPLCONFIGDIR"] = str(base / "cache")
         command = [str(core_executable()), "--simular", "--pontos", "1000", "--graficos",
-                   "--saida", str(base / "ensaio com acentos ç")]
+                   "--saida", str(base / "resultados ação/ensaio_001")]
         run = subprocess.run(command, env=env, capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=90, **hidden_process())
         if run.returncode:
             raise RuntimeError("Core self-test failed: " + (run.stderr or run.stdout)[-1200:])
-        capture = base / "ensaio com acentos ç/captura_001"
+        capture = base / "resultados ação/ensaio_001/captura_001"
         meta = json.loads((capture / "metadados.json").read_text(encoding="utf-8"))
         pngs = list((capture / "graficos").glob("*.png"))
         models = subprocess.run([str(core_executable()), "--listar-modelos"], check=True,
                                  capture_output=True, text=True, timeout=5, **hidden_process()).stdout.splitlines()
         if meta["origem"] != "SIMULACAO" or meta["pontos"] != 1000 or not pngs or len(models) != 8:
             raise RuntimeError("The bundled resources did not pass validation.")
-        Path(destination).write_text(json.dumps(dict(version=VERSION, platform=sys.platform,
+        from interface.rta.storage import ResultStore
+        from interface.rta.reports import report
+        store=ResultStore(base/"resultados ação")
+        pdf=report(store,dict(run=capture.parent.name,capture="captura_001",language="en",notes="Unicode check: ação"))
+        file=store.download(capture.parent.name,"","reports/"+pdf["file"])
+        if not file.read_bytes().startswith(b"%PDF-"):
+            raise RuntimeError("Bundled PDF generator failed.")
+        Path(destination).write_text(json.dumps(dict(pdf=True,version=VERSION, platform=sys.platform,
             packaged=FROZEN, core="windows-x64", samples=meta["pontos"], pngs=len(pngs),
             models=models, unicode_paths=True), indent=2) + "\n", encoding="utf-8")
     return 0

@@ -58,6 +58,26 @@ Function .onInit
   supported:
 FunctionEnd
 
+Function VerifyExecutableReleased
+  IfFileExists "$INSTDIR\RigolTransientAnalyzer.exe" 0 done
+  StrCpy $2 0
+  check:
+    ClearErrors
+    FileOpen $1 "$INSTDIR\RigolTransientAnalyzer.exe" a
+    ${IfNot} ${Errors}
+      FileClose $1
+      Return
+    ${EndIf}
+    Sleep 100
+    IntOp $2 $2 + 1
+    IntCmp $2 50 blocked check blocked
+  blocked:
+    MessageBox MB_OK|MB_ICONSTOP "Feche todas as instancias do aplicativo e tente novamente. / Close all application instances and try again." /SD IDOK
+    SetErrorLevel 2
+    Abort
+  done:
+FunctionEnd
+
 Function StopForUpdate
   IfFileExists "$INSTDIR\RigolTransientAnalyzer.exe" 0 done
   ExecWait '"$INSTDIR\RigolTransientAnalyzer.exe" --shutdown --quiet' $0
@@ -66,6 +86,7 @@ Function StopForUpdate
     SetErrorLevel 2
     Abort
   ${EndIf}
+  Call VerifyExecutableReleased
   done:
 FunctionEnd
 
@@ -96,15 +117,38 @@ Section /o "Atalho na Área de Trabalho / Desktop shortcut" Desktop
   CreateShortcut "$DESKTOP\Rigol Transient Analyzer.lnk" "$INSTDIR\RigolTransientAnalyzer.exe"
 SectionEnd
 
+Function un.VerifyExecutableReleased
+  IfFileExists "$INSTDIR\RigolTransientAnalyzer.exe" 0 done
+  StrCpy $2 0
+  check:
+    ClearErrors
+    FileOpen $1 "$INSTDIR\RigolTransientAnalyzer.exe" a
+    ${IfNot} ${Errors}
+      FileClose $1
+      Return
+    ${EndIf}
+    Sleep 100
+    IntOp $2 $2 + 1
+    IntCmp $2 50 blocked check blocked
+  blocked:
+    MessageBox MB_OK|MB_ICONSTOP "Feche todas as instancias do aplicativo e tente novamente. / Close all application instances and try again." /SD IDOK
+    SetErrorLevel 2
+    Abort
+  done:
+FunctionEnd
+
 Function un.onInit
   SetShellVarContext current
   SetRegView 64
+  IfFileExists "$INSTDIR\RigolTransientAnalyzer.exe" 0 done
   ExecWait '"$INSTDIR\RigolTransientAnalyzer.exe" --shutdown --quiet' $0
   ${If} $0 != 0
     MessageBox MB_OK|MB_ICONSTOP "Conclua ou cancele o ensaio antes de desinstalar. / Finish or cancel the measurement before uninstalling." /SD IDOK
     SetErrorLevel 2
     Abort
   ${EndIf}
+  Call un.VerifyExecutableReleased
+  done:
 FunctionEnd
 
 Section "Uninstall"

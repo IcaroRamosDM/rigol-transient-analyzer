@@ -3,6 +3,8 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 import argparse
+import ctypes
+from ctypes import wintypes
 import hashlib
 import json
 import os
@@ -15,7 +17,8 @@ import winreg
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "testes"))
-from test_controle_rigol import MultiSessionScope
+from test_workbench import SetupScope
+VERSION=(ROOT/"VERSION").read_text(encoding="utf-8").strip()
 
 
 def main():
@@ -72,7 +75,7 @@ def main():
         assert run_setup()==0, "Installation failed"
         assert app.is_file(), "Application executable is missing"
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_name, access=winreg.KEY_READ|winreg.KEY_WOW64_64KEY) as key:
-            assert winreg.QueryValueEx(key, "DisplayVersion")[0]=="0.1.0"
+            assert winreg.QueryValueEx(key, "DisplayVersion")[0]==VERSION
         report["installation"] = True
         with socket.socket() as listener:
             listener.bind(("127.0.0.1",0)); port=listener.getsockname()[1]
@@ -93,7 +96,7 @@ def main():
         else:
             raise RuntimeError("Installed app did not open its interface")
         token=data["token"]
-        assert data["packaged"] and data["version"]=="0.1.0"
+        assert data["packaged"] and data["version"]==VERSION
         assert len(data["models"])==8
         report["standalone_without_python_or_wsl_on_path"] = True
         duplicate=subprocess.run([str(app),"--no-browser","--quiet"],env=env,timeout=10,**hidden)
@@ -110,10 +113,38 @@ def main():
         download=api("/download?run="+job["id"]+"&capture=captura_001&file=amostras.csv")
         assert hashlib.sha256(download).digest()==hashlib.sha256((capture/"amostras.csv").read_bytes()).digest()
         report["demo_export_png_and_download"] = True
-        instrument=MultiSessionScope()
+        # Exercise new features through the installed server, with a minimal PATH.
+        profile=json.loads(api("/api/profile",dict(name="Fonte ação",settings=dict(nominal=5))))
+        assert json.loads(api("/api/profiles"))[0]["name"]=="Fonte ação"
+        original_id=job["id"]
+        original_digest=hashlib.sha256((capture/"amostras.csv").read_bytes()).digest()
+        detail=json.loads(api("/api/run?id="+original_id))
+        event=next(e for e in detail["captures"][0]["events"] if e["status"]=="valido" and e["direcao"]=="subida")
+        for language in ("en","pt"):
+            pdf=json.loads(api("/api/report",dict(run=original_id,capture="captura_001",language=language,notes="Test & <texto> ação")))
+            assert api(pdf["url"]).startswith(b"%PDF-")
+        api("/api/run",dict(mode="reanalysis",settings=dict(plots=False,tolerance_v=.02),
+                           source=dict(run=original_id,capture="captura_001")))
+        derived=wait_job();assert derived["state"]=="done",derived
+        comparison=json.loads(api("/api/compare",dict(items=[
+            dict(run=original_id,capture="captura_001",event=int(event["evento"])),
+            dict(run=derived["id"],capture="captura_001",event=int(event["evento"]))])))
+        assert not comparison["criteria_match"]
+        assert len(comparison["rows"])==2
+        assert hashlib.sha256((capture/"amostras.csv").read_bytes()).digest()==original_digest
+        assert b"Saved profiles" in api("/modules/i18n.js")
+        report["profiles_reanalysis_comparison_pdf_bilingual_assets"]=True
+        instrument=SetupScope()
         instrument.falha="sem_disparo"
         cfg=dict(ip="127.0.0.1",port=instrument.porta,points=1000,plots=False,timeout=10)
         api("/api/connect",cfg)
+        backup=json.loads(api("/api/backup",dict(settings=cfg)))
+        instrument.parametros[":CHAN1:SCAL"]="2"
+        restored=json.loads(api("/api/restore",dict(settings=cfg,id=backup["id"])))
+        assert restored["snapshot"]["channels"][0]["scale_v"]==.5
+        diagnostic=json.loads(api("/api/diagnose",dict(settings=cfg)))
+        assert diagnostic["measurements"]["frequency2"]==1000
+        report["setup_backup_restore_diagnostics"]=True
         api("/api/run",dict(mode="real",settings=cfg))
         deadline=time.monotonic()+5
         while instrument.armadas<1 and time.monotonic()<deadline:time.sleep(.02)
@@ -127,9 +158,25 @@ def main():
         assert subprocess.run([str(app),"--shutdown","--quiet"],env=env,timeout=10,**hidden).returncode==0
         assert process.wait(timeout=10)==0
         process=None
+        # A detached/second process must not allow an update to overwrite a mapped image.
+        kernel=ctypes.WinDLL("kernel32",use_last_error=True)
+        kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,wintypes.LPVOID,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+        kernel.CreateFileW.restype=wintypes.HANDLE
+        kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+        handle=kernel.CreateFileW(str(app),0x80000000,1,None,3,0,None)
+        assert handle!=wintypes.HANDLE(-1).value
+        digest=hashlib.sha256(app.read_bytes()).digest()
+        try:
+            assert run_setup()==2,"An executable still in use must block the update"
+            assert hashlib.sha256(app.read_bytes()).digest()==digest
+        finally:
+            kernel.CloseHandle(handle)
+        report["locked_executable_blocks_update"]=True
         assert run_setup()==0
         assert (capture/"amostras.csv").is_file()
-        report["upgrade_preserves_results"] = True
+        assert json.loads((work/"estado ação/profiles"/(profile["id"]+".json")).read_text(encoding="utf-8"))["name"]=="Fonte ação"
+        assert (work/"estado ação/backups"/backup["id"]/"setup.bin").is_file()
+        report["upgrade_preserves_results_profiles_and_backups"] = True
         (target/"user-note.txt").write_text("Preserve unknown files.",encoding="utf-8")
         subprocess.run([str(target/"Uninstall.exe"),"/S"],env=env,check=True,timeout=90,**hidden)
         # NSIS hands uninstall work to a temporary process; wait for both signals.

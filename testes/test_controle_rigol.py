@@ -33,6 +33,11 @@ class MultiSessionScope(Instrumento):
                                 "COUP":"DC", "BWL":"20M", "DISP":1}.items():
                 self.parametros[f":CHAN{channel}:{name}"] = str(value)
 
+    def configurar(self,command):
+        super().configurar(command)
+        if command==":STOP":
+            self.pendente=False
+
     def consulta(self, command):
         if command == "*IDN?":
             return "OTHER,DEVICE,SERIAL,1" if self.wrong_model else "RIGOL TECHNOLOGIES," + self.model + ",TESTE_PROTOCOLO,SIMULADO"
@@ -48,20 +53,23 @@ class MultiSessionScope(Instrumento):
                     connection, _ = self.servidor.accept()
                 except socket.timeout:
                     continue
-                with connection:
-                    connection.settimeout(2)
-                    with connection.makefile("rb") as stream:
-                        for line in stream:
-                            for command in line.decode().strip().split(";"):
-                                if not command:
-                                    continue
-                                self.commands.append(command)
-                                if command.endswith("?"):
-                                    reply = self.consulta(command)
-                                    self.mandar(connection, reply if isinstance(reply, bytes) else
-                                                (reply+"\n").encode())
-                                else:
-                                    self.configurar(command)
+                try:
+                    with connection:
+                        connection.settimeout(2)
+                        with connection.makefile("rb") as stream:
+                            for line in stream:
+                                for command in line.decode().strip().split(";"):
+                                    if not command:
+                                        continue
+                                    self.commands.append(command)
+                                    if "?" in command:
+                                        reply = self.consulta(command)
+                                        self.mandar(connection, reply if isinstance(reply, bytes) else
+                                                    (reply+"\n").encode())
+                                    else:
+                                        self.configurar(command)
+                except (OSError,ValueError):
+                    continue
         except OSError:
             pass
         finally:

@@ -1,3 +1,4 @@
+import { t,locale } from "./i18n.js";
 // Time-base values come from the server; all calculations use integer picoseconds.
 const PS = 1e12;
 const unitFactors = {ns:1e9, us:1e6, ms:1e3, s:1};
@@ -20,7 +21,7 @@ export function adjacentTime(seconds,direction) {
 export function timeStep(seconds) { return band(floorPs(seconds*PS)).step_ps/PS; }
 function autoUnit(seconds) { return seconds>=1?"s":seconds>=1e-3?"ms":seconds>=1e-6?"us":"ns"; }
 export function formatTime(seconds,unit=autoUnit(seconds)) {
-  return (seconds*unitFactors[unit]).toLocaleString("pt-BR",{maximumSignificantDigits:12})+" "+labels[unit];
+  return (seconds*unitFactors[unit]).toLocaleString(locale,{maximumSignificantDigits:12})+" "+labels[unit];
 }
 const element=id=>document.getElementById(id);
 function secondsInField() {
@@ -48,8 +49,8 @@ function render(seconds,unit,adjusted=false) {
   input.value=String(Number((value*factor).toPrecision(12)));
   input.setCustomValidity("");
   input.setAttribute("aria-valuetext",formatTime(value,unit));
-  element("timeDivHint").textContent=(adjusted?"Ajustado para "+formatTime(value,unit)+". ":"")+
-    "Passo nesta faixa: "+formatTime(timeStep(value),unit)+".";
+  element("timeDivHint").textContent=(adjusted?t("Ajustado para ")+formatTime(value,unit)+". ":"")+
+    t("Passo nesta faixa: ")+formatTime(timeStep(value),unit)+".";
   updateTimeControls(input.disabled);
   return value;
 }
@@ -66,7 +67,7 @@ export function initTimebase(onChange) {
   function commit() {
     const seconds=secondsInField();
     if(!Number.isFinite(seconds)||seconds<=0) {
-      input.setCustomValidity("Informe um tempo por divisão positivo.");
+      input.setCustomValidity(t("Informe um tempo por divisão positivo."));
       return false;
     }
     const adjusted=Math.abs(seconds-normalizeTime(seconds))>Math.max(1e-20,Math.abs(seconds)*1e-12);
@@ -92,7 +93,7 @@ export function initTimebase(onChange) {
       input.dataset.factor=String(factor);
       input.min=String(model.min_ps/PS*factor); input.max=String(model.max_ps/PS*factor);
       input.step="any";
-      element("timeDivHint").textContent="Informe um valor na unidade selecionada.";
+      element("timeDivHint").textContent=t("Informe um valor na unidade selecionada.");
       updateTimeControls(input.disabled); return;
     }
     render(seconds,select.value); onChange();

@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { configureTimebase, setTimeSeconds } from "./timebase.js";
 
 const catalog = new Map();
@@ -8,12 +9,12 @@ export function configureModels(profiles) {
   catalog.clear();
   for (const profile of profiles) catalog.set(profile.model, profile);
   for (const select of [element("model"), element("rigolModel")]) {
-    select.replaceChildren(new Option("Detectar automaticamente", "auto"));
+    select.replaceChildren(new Option(t("Detectar automaticamente"), "auto"));
     for (const series of [...new Set(profiles.map(p => p.series))]) {
       const group = document.createElement("optgroup");
       group.label = "Rigol " + series;
       for (const p of profiles.filter(p => p.series === series))
-        group.append(new Option(p.model + " · " + p.channels + " canais · " + p.bandwidth_mhz + " MHz", p.model));
+        group.append(new Option(p.model + " · " + p.channels + t(" canais · ") + p.bandwidth_mhz + " MHz", p.model));
       select.append(group);
     }
   }
@@ -33,11 +34,11 @@ export function updateModelControls(connection, cfg) {
     element(id).min = String(effective.min_scale * probe);
     element(id).max = String(effective.max_scale * probe);
   }
-  const description = profile ? profile.model + " · " + profile.channels + " canais · " + profile.bandwidth_mhz + " MHz. " +
-    (profile.bench_validated ? "Validado em bancada." : "Perfil preparado; validação em bancada pendente.") :
-    "Detecção pelas informações do instrumento. Perfis DHO800 e DHO900 disponíveis.";
+  const description = profile ? profile.model + " · " + profile.channels + t(" canais · ") + profile.bandwidth_mhz + " MHz. " +
+    (profile.bench_validated ? t("Validado em bancada.") : t("Perfil preparado; validação em bancada pendente.")) :
+    t("Detecção pelas informações do instrumento. Perfis DHO800 e DHO900 disponíveis.");
   element("modelInfo").textContent = description;
-  element("rigolModelInfo").textContent = description + " O ensaio usa CH1 e CH2, até 1 milhão de pontos por canal.";
+  element("rigolModelInfo").textContent = description + t(" O ensaio usa CH1 e CH2, até 1 milhão de pontos por canal.");
   element("scopeModel").textContent = profile ? "Rigol " + profile.model : "Rigol DHO800 / DHO900";
   element("rigolModel").value = cfg.model;
   element("rigolModel").disabled = element("model").disabled;

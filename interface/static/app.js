@@ -1,3 +1,5 @@
+import { initWorkbench } from "./modules/workbench.js";
+import { t } from "./modules/i18n.js";
 import { configureTimebase, initTimebase } from "./modules/timebase.js";
 import { $, S, inputs, titles, active, controls, api, say, config, saveConfig, fillConfig } from "./modules/core.js";
 import { draw, selectEvent, setRange, eventRange, zoom } from "./modules/chart.js";
@@ -15,6 +17,7 @@ function showView(name) {
   });
   $("pageTitle").textContent = titles[name][0];
   $("pageSubtitle").textContent = titles[name][1];
+  document.dispatchEvent(new CustomEvent("rta:show",{detail:name}));
   if (name === "history") refreshHistory().catch(error => say(error.message, "error"));
   if (name === "measure") requestAnimationFrame(draw);
 }
@@ -22,7 +25,7 @@ async function connect() {
   S.busy = true; controls(); say("");
   try {
     S.connection = await api("/api/connect", {ip: $("ip").value.trim(), port: Number($("port").value), model: $("model").value});
-    say("Rigol identificado. Confira a preparação da bancada e inicie a medição.");
+    say(t("Rigol identificado. Confira a preparação da bancada e inicie a medição."));
   } catch (error) {
     S.connection = (await api("/api/status").catch(() => ({connection: {}}))).connection;
     say(error.message, "error");
@@ -35,7 +38,7 @@ async function start(mode) {
   if (mode === "demo") { cfg.ip = S.defaults.ip; cfg.port = S.defaults.port; }
   S.busy = true; controls();
   try {
-    S.job = await api("/api/run", {mode, settings: cfg});
+    S.job = await api("/api/run", {mode, settings: cfg,backup:mode==="real"&&$("backupBefore").checked});
     showView("measure"); renderJob();
   } catch (error) { say(error.message, "error"); }
   finally { S.busy = false; controls(); }
@@ -44,11 +47,11 @@ function renderJob() {
   const job = S.job;
   $("progressPanel").hidden = !job || (!active() && S.run && S.run.id !== job.id);
   if (!job) return;
-  $("jobMessage").textContent = job.message;
+  $("jobMessage").textContent = t(job.message);
   $("jobCapture").textContent = job.capture ?
-    "Captura " + job.capture + " de " + job.total : "Preparando " + job.total + " captura(s)";
-  $("jobMode").textContent = job.mode === "demo" ? "Demonstração" : "Medição real";
-  $("jobMode").className = "badge " + (job.mode === "demo" ? "demo" : "real");
+    t("Captura ") + job.capture + t(" de ") + job.total : t("Preparando ") + job.total + t(" captura(s)");
+  $("jobMode").textContent = job.mode === "demo" ? t("Demonstração") : job.mode==="reanalysis"?t("Reanálise de arquivo"):t("Medição real");
+  $("jobMode").className = "badge " + (job.mode === "demo" ? "demo" : job.mode==="reanalysis"?"file":"real");
   $("jobSpinner").hidden = !active();
   $("jobLogs").textContent = job.logs.join("\n");
   const phase = ["conectando", "configurando", "preparando"].includes(job.phase) ? 0 :
@@ -74,7 +77,7 @@ async function poll() {
       S.loadedJob = S.job.id;
       if (["done", "attention"].includes(S.job.state)) {
         await openRun(S.job.id);
-        say(S.job.message + (S.job.mode === "demo" ? " · sinal sintético." : " · dados reais salvos."),
+        say(S.job.message + (S.job.mode === "demo" ? t(" · sinal sintético.") : S.job.mode==="reanalysis"?"":t(" · dados reais salvos.")),
           S.job.state === "attention" ? "attention" : "");
         await refreshHistory();
       } else {
@@ -102,7 +105,7 @@ $("eventWindow").addEventListener("click",()=>eventRange());
 $("edgeZoom").addEventListener("click",()=>eventRange(true));
 $("zoomIn").addEventListener("click",()=>zoom(.5));
 $("zoomOut").addEventListener("click",()=>zoom(2));
-async function shutdown(){try{await api("/api/shutdown",{});S.closed=true;controls();say("Aplicativo encerrado. Você pode fechar esta página.");}catch(e){say(e.message,"error");}}
+async function shutdown(){try{await api("/api/shutdown",{});S.closed=true;controls();say(t("Aplicativo encerrado. Você pode fechar esta página."));}catch(e){say(e.message,"error");}}
 $("shutdown").addEventListener("click",shutdown);
 $("shutdownMobile").addEventListener("click",shutdown);
 async function init(){
@@ -113,7 +116,7 @@ async function init(){
     $("appVersion").textContent=data.version ? "· v"+data.version : "";
     configureModels(data.models);
     configureTimebase(data.timebase);
-    fillConfig(data.defaults);S.ready=true;controls();renderJob();
+    fillConfig(data.defaults);S.ready=true;controls();renderJob();document.dispatchEvent(new CustomEvent("rta:ready"));
     await refreshHistory();await poll();
     if (!S.run && !active()) {
       let last = ""; try { last=localStorage.getItem("rta.lastRun")||""; } catch (_) {}
@@ -124,6 +127,7 @@ async function init(){
 document.addEventListener("rta:view", e=>showView(e.detail));
 document.addEventListener("rta:job-render", renderJob);
 document.addEventListener("rta:event-render", renderEvent);
+initWorkbench();
 initModels(()=>{ S.scope.snapshot=null; controls(); saveConfig(); });
 initRigol();
 initTimebase(()=>{saveConfig();controls();});

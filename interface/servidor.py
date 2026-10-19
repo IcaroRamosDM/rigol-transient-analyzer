@@ -19,10 +19,16 @@ from interface.rta.service import App
 from interface.rta.http import server
 from interface.rta.instance import InstanceLock
 from interface.rta.process import KILL
-from interface.rta.runtime import FROZEN
+from interface.rta.runtime import FROZEN, hidden_process
 
 def open_browser(url):
-    if os.environ.get("WSL_DISTRO_NAME") and shutil.which("powershell.exe"):
+    if os.name=="nt":
+        # Default-browser activation must not retain this executable after shutdown.
+        helper=os.path.join(os.environ.get("SystemRoot",r"C:\Windows"),"System32","rundll32.exe")
+        subprocess.Popen([helper,"url.dll,FileProtocolHandler",url],
+                         stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                         **hidden_process())
+    elif os.environ.get("WSL_DISTRO_NAME") and shutil.which("powershell.exe"):
         subprocess.Popen(["powershell.exe", "-NoProfile", "-Command", "Start-Process", url],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:

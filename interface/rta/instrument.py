@@ -42,6 +42,41 @@ class Session:
         except UnicodeDecodeError:
             raise Problem("Resposta de texto inválida do Rigol.", 502) from None
 
+    def exact(self, size):
+        result=bytearray()
+        while len(result)<size:
+            self.remaining()
+            part=self.connection.recv(min(65536,size-len(result)))
+            if not part:
+                raise Problem("Bloco incompleto do Rigol.",502)
+            result.extend(part)
+        return bytes(result)
+
+    def block(self, command, maximum=2*1024*1024):
+        self.send(command)
+        header=self.exact(2)
+        if header[:1]!=b"#" or header[1:2] not in b"123456789":
+            raise Problem("Cabeçalho binário inválido.",502)
+        digits=self.exact(int(header[1:]))
+        if not digits.isdigit():
+            raise Problem("Comprimento binário inválido.",502)
+        size=int(digits)
+        if not 0<size<=maximum:
+            raise Problem("Bloco do Rigol excede o limite.",502)
+        data=self.exact(size)
+        ending=self.exact(1)
+        if ending==b"\r":
+            ending=self.exact(1)
+        if ending!=b"\n":
+            raise Problem("Terminador binário inválido.",502)
+        return data
+
+    def send_block(self, command, data):
+        count=str(len(data)).encode("ascii")
+        packet=command.encode("ascii")+b" #"+str(len(count)).encode("ascii")+count+data+b"\n"
+        self.remaining()
+        self.connection.sendall(packet)
+
     def number(self, command):
         try:
             value = float(self.query(command))

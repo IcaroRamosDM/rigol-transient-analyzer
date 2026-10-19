@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { $, S, api, say, number, units } from "./core.js";
 const event = () => S.capture && S.capture.events[S.event];
 function fitRange(start, end) {
@@ -17,11 +18,11 @@ export async function loadWave() {
     const data = await api("/api/waveform?" + query, undefined, request.signal);
     if (S.waveformRequest !== request) return;
     S.data = data; S.pointer = null;
-    $("displayCount").textContent = number(data.points.length, 0) + " pontos exibidos · " +
-      number(data.selected, 0) + " amostras na janela";
+    $("displayCount").textContent = number(data.points.length, 0) + t(" pontos exibidos · ") +
+      number(data.selected, 0) + t(" amostras na janela");
     const factor = S.relative ? 1e6 : 1000, base = S.relative && event() ? event().tempo_s : 0;
-    $("waveRange").textContent = "t = " + number((data.start-base)*factor, 2) + " a " +
-      number((data.end-base)*factor, 2) + (S.relative ? " µs após a borda" : " ms em relação ao disparo");
+    $("waveRange").textContent = "t = " + number((data.start-base)*factor, 2) + t(" a ") +
+      number((data.end-base)*factor, 2) + (S.relative ? t(" µs após a borda") : t(" ms em relação ao disparo"));
     draw();
   } catch (error) { if (error.name !== "AbortError") say(error.message, "error"); }
   finally { if (S.waveformRequest === request) $("chartLoading").hidden = true; }
@@ -68,8 +69,8 @@ export function draw() {
   const x = t => g.left + (t-range[0])/(range[1]-range[0])*(g.right-g.left);
   const base = S.relative && e ? e.tempo_s : 0, factor = S.relative ? 1e6 : 1000;
   c.font = "10px Segoe UI, sans-serif";
-  const panels = [{column:1,top:g.top,bottom:g.middle-24,color:"#c4860a",label:"TENSÃO (V)",factor:1},
-    {column:2,top:g.middle+30,bottom:g.bottom,color:"#088895",label:"CORRENTE (mA)",factor:1000}];
+  const panels = [{column:1,top:g.top,bottom:g.middle-24,color:"#c4860a",label:t("TENSÃO (V)"),factor:1},
+    {column:2,top:g.middle+30,bottom:g.bottom,color:"#088895",label:t("CORRENTE (mA)"),factor:1000}];
   for (const panel of panels) {
     let lo = Infinity, hi = -Infinity;
     for (const point of data.points) { const v = point[panel.column]*panel.factor; lo=Math.min(lo,v); hi=Math.max(hi,v); }
@@ -106,7 +107,7 @@ export function draw() {
     c.restore();
   }
   c.fillStyle="#718792";c.textAlign="center";c.font="9px Segoe UI, sans-serif";
-  c.fillText(S.relative?"Tempo após a borda (µs)":"Tempo em relação ao disparo (ms)",(g.left+g.right)/2,g.height-4);
+  c.fillText(S.relative?t("Tempo após a borda (µs)"):t("Tempo em relação ao disparo (ms)"),(g.left+g.right)/2,g.height-4);
 }
 function pointer(eventValue) {
   const rect = canvas.getBoundingClientRect(), g = geometry();

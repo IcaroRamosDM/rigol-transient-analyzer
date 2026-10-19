@@ -1,6 +1,6 @@
 """Argument construction shared by acquisition and configuration-only mode."""
 
-def build_command(executable, results, run, mode, cfg, configuration_only=False):
+def build_command(executable, results, run, mode, cfg, configuration_only=False, input_file=None):
     command = [str(executable)]
     if configuration_only:
         command.append("--configurar-apenas")
@@ -18,5 +18,10 @@ def build_command(executable, results, run, mode, cfg, configuration_only=False)
         command.extend(["--" + flag, str(cfg[key])])
     if cfg["plots"]:
         command.append("--graficos")
-    command.extend(["--simular"] if mode == "demo" else [cfg["ip"]])
+    if mode=="reanalysis":
+        if input_file is None:
+            raise ValueError("Reanalysis requires saved samples.")
+        command.extend(["--entrada",str(input_file)])
+    else:
+        command.extend(["--simular"] if mode == "demo" else [cfg["ip"]])
     return command
