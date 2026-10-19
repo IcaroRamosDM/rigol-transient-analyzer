@@ -1,9 +1,10 @@
 # Rigol Transient Analyzer
 
-A C17 command-line tool for measuring how a DC supply responds to sudden
-load changes. It controls a Rigol DHO802 over Ethernet, downloads voltage
-and current waveforms from the same acquisition, and calculates the
-response to each load transition.
+A C17 application with a local browser interface and command-line tools
+for measuring how a DC supply responds to sudden load changes. It controls
+listed Rigol DHO800 and DHO900 models over Ethernet, downloads voltage and
+current waveforms from the same acquisition, and calculates the response
+to each load transition.
 
 A function generator drives a MOSFET switched load. CH1 measures supply
 voltage at the circuit; CH2 measures a current-sense resistor. The program
@@ -12,6 +13,10 @@ measurements, summaries, statistics, and optional plots.
 
 ## Features
 
+- Local browser interface for instrument setup, measurements, plots, and history.
+- Automatic model detection or manual selection, checked against instrument identity.
+- Model-specific timebase and vertical-scale limits from a shared profile catalog.
+- Scope configuration with readback, continuous visualization, and RUN/STOP controls.
 - Fresh single acquisitions, with both channels read from one frozen record.
 - Up to 1,000,000 samples per channel, transferred in 16-bit WORD format.
 - Current conversion using a configurable sense resistance.
@@ -22,9 +27,55 @@ measurements, summaries, statistics, and optional plots.
 - CSV and JSON export, plus overview and event-detail PNG plots.
 - Offline simulation and reanalysis of saved samples.
 
-Acquisition and analysis run in C. Python and Matplotlib generate plots.
-Options, console messages, and exported field names retain their original
-Portuguese names; this guide explains their meaning.
+Acquisition and analysis run in C. Python serves the local interface;
+Matplotlib generates optional PNG plots. The interface, command options,
+console messages, and exported field names use Portuguese; this guide
+explains their meaning.
+
+## Instrument compatibility
+
+The current profiles use the common DHO800/DHO900 command set:
+
+| Model | Analog channels | Bandwidth | Hardware validation |
+| --- | --- | --- | --- |
+| DHO802 | 2 | 70 MHz | Bench acquisition validated |
+| DHO804 | 4 | 70 MHz | Pending |
+| DHO812 | 2 | 100 MHz | Pending |
+| DHO814 | 4 | 100 MHz | Pending |
+| DHO914 | 4 | 125 MHz | Pending |
+| DHO914S | 4 | 125 MHz | Pending |
+| DHO924 | 4 | 250 MHz | Pending |
+| DHO924S | 4 | 250 MHz | Pending |
+
+The DHO802 was tested on the reference bench with firmware `00.01.05`.
+The other profiles are prepared from Rigol documentation and checked with
+a protocol simulator. These software checks do not establish operation on
+the corresponding physical instruments. Their interface labels explicitly
+show that bench validation is pending.
+
+The analyzer uses **CH1 for supply voltage and CH2 for sense voltage** on
+all listed models, with a maximum of **1,000,000 samples per channel**.
+These are application limits, including on four-channel instruments.
+
+| Profile family | Time per division | Vertical scale at 1x |
+| --- | --- | --- |
+| DHO800 models listed above | 5 ns to 500 s | 500 microvolts/div to 10 V/div |
+| DHO900 models listed above | 2 ns to 500 s | 200 microvolts/div to 10 V/div |
+
+Displayed vertical-scale limits are multiplied by the selected probe
+factor. For example, the DHO802 minimum is 5 mV/div with a 10x probe.
+
+**Detectar automaticamente (detect automatically)** is the default in the
+interface; the command-line equivalent is `--modelo auto`. Manual selection
+requires the connected instrument to report that exact model. The
+acquisition executable and interface recheck identity before control
+commands, so a mismatched or unlisted model is rejected before applying
+adjustments.
+
+Only the exact models in the table have profiles. Other Rigol families
+require a separate review of commands, waveform framing and scaling, and
+trigger behavior before a driver can be added. Model capabilities are
+defined once in `include/rigol_models.def` and shared by C and Python.
 
 ## Requirements and build
 
@@ -48,8 +99,11 @@ make
 make dependencias
 ```
 
-The executable is `build/carac_transientes`. The second command installs
+The executable is `build/carac_transientes`. `make dependencias` installs
 plotting dependencies from `requirements-graficos.txt` into `.venv`.
+These dependencies are needed for PNG generation; the browser interface,
+interactive charts, and CSV/JSON exports use Python's standard library
+and local browser assets.
 
 Verify the software without connecting any instruments:
 
@@ -78,16 +132,69 @@ from the project folder. The Windows launcher defaults to the
 with `iniciar-interface.cmd -Distribution NAME`. On Linux, `./iniciar-interface.sh` builds the
 executable and starts the interface.
 
-The interface is in Portuguese and has three work areas:
+The interface is in Portuguese and has four work areas:
 
-1. **Medição (measurement):** enter the scope IP, click **Conectar**, match
-   the probe factors to their physical switches, set the sense resistance
-   and capture count, then click **Iniciar medição real**.
-2. **Preparação (setup):** consult the circuit diagram, probe connections,
+1. **Medição (measurement):** select **Modelo do Rigol** or leave
+   **Detectar automaticamente**, enter the scope IP, and click **Conectar**.
+   Check the identified model, match the probe factors to their physical
+   switches, and set the sense resistance and capture count. Use the
+   **Rigol** tab to review the acquisition profile, then click
+   **Iniciar medição real** on the measurement tab.
+2. **Rigol (instrument control):** read current settings, edit the bench
+   profile, apply and confirm it, resume continuous visualization, or
+   freeze the scope display.
+3. **Preparação (setup):** consult the circuit diagram, probe connections,
    supply settings, and generator settings.
-3. **Histórico (history):** open saved runs, select captures and transitions,
+4. **Histórico (history):** open saved runs, select captures and transitions,
    and download samples, event metrics, configuration, statistics, and
    available PNG images.
+
+### Configure the scope from the interface
+
+After connecting on the **Medição** tab:
+
+1. Open **Rigol**. The **Modelo do Rigol** selector mirrors the selection
+   on the measurement tab. Check the model and validation status shown.
+2. Click **Ler ajustes (read settings)** to display the instrument's current
+   settings and their read time. This reading leaves the form values intact.
+3. Set **Ponta CH1** and **Ponta CH2** to match the physical probe switches.
+   Set **Pontos por canal**, **Tensão nominal (V)**, both channel scales,
+   **Tempo por divisão**, and **Limite de banda**.
+4. Check the summary below the form: CH1 is centered on the nominal supply
+   voltage, CH2 on 0 V, both use DC coupling, and the trigger is the CH2
+   rising edge at the midpoint of the two current thresholds.
+5. Click **Aplicar e visualizar (apply and visualize)**. The program applies
+   the profile, checks the instrument readback, and starts continuous
+   acquisition with automatic trigger sweep. Expect a success message and
+   the confirmed settings under **Configuração confirmada**.
+6. Use **Congelar (freeze)** for STOP or **Retomar visualização (resume
+   visualization)** to resume automatic continuous acquisition. To save
+   measurements, return to **Medição** and click **Iniciar medição real**.
+
+**Usar perfil de 5 V** loads the reference defaults into the form; click
+**Aplicar e visualizar** to send them to the instrument. Applying a profile
+does not save a measurement. A real measurement applies the form's profile,
+takes fresh single acquisitions, exports the data, and finishes in STOP.
+
+### Timebase units and steps
+
+For **Tempo por divisão**, select **ns**, **µs**, **ms**, or **s** next to the
+value. Changing units preserves the time setting. Use **− / +** or the
+keyboard arrow keys to move between values on the profile's timebase grid.
+
+The increment changes with the range. For example, 205 µs advances to
+210 µs. A typed 206 µs is adjusted to 205 µs when the field loses focus or
+Enter is pressed, with a message showing the adjustment. The server also
+rejects values outside the selected grid, and applying a profile confirms
+the actual timebase by reading it back from the scope. Additional profiles
+still require hardware validation as stated above.
+
+With automatic detection, connect first so the controls use the detected
+model's limits. Model selection, form settings, and the preferred time
+unit are remembered by the browser. Recheck the physical probe switches
+when reopening the application.
+
+### Measure, inspect, and export
 
 Use **Explorar demonstração** to try the complete workflow without an
 instrument. This mode produces a clearly labeled synthetic 10,000-sample
@@ -184,11 +291,27 @@ Confirm that the computer can reach the scope. The reference bench
 uses IP address `169.254.112.67` and raw TCP port `5555`. Replace the IP
 address in the examples if your instrument uses a different one.
 
-Capture once with the reference probe settings:
+List the available model profiles without contacting an instrument:
+
+```bash
+./build/carac_transientes --listar-modelos
+```
+
+Capture once with automatic model detection and the reference probe settings:
 
 ```bash
 ./build/carac_transientes --sonda-v 10 --sonda-i 1 --graficos 169.254.112.67
 ```
+
+To require the reference DHO802 explicitly:
+
+```bash
+./build/carac_transientes --modelo DHO802 --sonda-v 10 --sonda-i 1 --graficos 169.254.112.67
+```
+
+For a DHO914, use `--modelo DHO914` and that instrument's IP address.
+Selecting DHO914 while connecting to a DHO802 produces a model-mismatch
+error before scope adjustments are sent.
 
 Capture three new records and combine their event statistics:
 
@@ -196,8 +319,9 @@ Capture three new records and combine their event statistics:
 ./build/carac_transientes --sonda-v 10 --sonda-i 1 --capturas 3 --graficos 169.254.112.67
 ```
 
-**Probe factors must match the physical switches.** The defaults are
-1x for both probes, so reference CH1 requires `--sonda-v 10`.
+**Probe factors must match the physical switches.** Command-line defaults
+are 1x for both probes, so reference CH1 requires `--sonda-v 10`. The browser
+interface initially uses 10x for CH1 and 1x for CH2.
 
 The program applies this acquisition profile:
 
@@ -221,11 +345,27 @@ To resume continuous acquisition from the terminal:
 
 ```bash
 make antigos
-./build/consultar_rigol 169.254.112.67 ':TRIG:SWE NORM;:RUN;*OPC;*OPC?'
+./build/consultar_rigol 169.254.112.67 ':TRIG:SWE AUTO;:RUN;*OPC;*OPC?'
 ```
 
 The reply `1` acknowledges command completion. The compound `*OPC;*OPC?`
 sequence was verified on the reference DHO802 firmware.
+
+### Apply a profile without acquiring data
+
+Apply and confirm the reference profile without creating a results directory:
+
+```bash
+./build/carac_transientes --configurar-apenas --modelo DHO802 --sonda-v 10 --sonda-i 1 169.254.112.67
+```
+
+This command leaves the scope in STOP. The interface's **Aplicar e visualizar**
+action uses the same C configuration mode, then resumes continuous acquisition.
+
+The CLI accepts `--tempo-div` in **seconds**, for example
+`--tempo-div 0.000210` for 210 µs/div. Use a value on the selected model's
+grid; a setting quantized to a different value by the scope fails readback
+confirmation. The browser provides the unit selector and step controls.
 
 ### Other operating modes
 
@@ -360,23 +500,41 @@ Results, compiled binaries, and `.venv` are excluded from Git.
 
 Software checks cover event detection, known analytical settling behavior,
 incomplete windows, late disturbances, invalid data, fragmented network
-transfers, trigger sequencing, export, reanalysis, and plots. Run
-`make test` for unit and integration checks, and `make sanitize` for the
-same checks with AddressSanitizer and UndefinedBehaviorSanitizer.
+transfers, trigger sequencing, export, reanalysis, and plots. Interface
+checks cover configuration readback, exclusive operations, cancellation,
+history, downloads, and local-access restrictions. Model checks exercise
+every catalog entry's configuration, DHO914 waveform acquisition, model
+limits, and rejection of unknown, mismatched, or swapped instruments
+before control commands are sent.
+
+Run `make test` for C analysis and Python unit/integration checks, and
+`make sanitize` for the same checks with AddressSanitizer and
+UndefinedBehaviorSanitizer. Protocol fixtures use local simulated
+instruments. The JavaScript timebase contract is in
+`testes/test_timebase.mjs`; it is a separate check and is not run by
+`make test`.
 
 Physical acquisition was validated with a Rigol DHO802 running firmware
-`00.01.05`, including records with 1,000,000 samples per channel and a
-3.2 ns sample interval. Software tests and physical acquisition establish
-tool operation separately from electrical interpretation of the waveforms.
+`00.01.05`, including fresh records with 1,000,000 samples per channel.
+The sample interval is read from the waveform preamble and can vary with
+acquisition settings. The other model profiles remain pending physical
+validation. Software tests and physical acquisition establish tool
+operation separately from electrical interpretation of the waveforms.
 
 | Path | Purpose |
 | --- | --- |
 | `src/main.c` | Options and run coordination |
 | `src/rigol.c` | Network, scope configuration, triggering, waveform transfer |
+| `src/modelos.c` | Model identity parsing and C compatibility checks |
+| `include/rigol_models.def` | Shared model catalog and capability limits |
 | `src/analise.c` | Event detection, measurements, synthetic waveforms |
 | `src/arquivos.c` | Export, CSV import, statistics, plot invocation |
 | `src/comum.c`, `include/carac.h` | Shared types and utilities |
-| `interface/` | Local server, browser interface, and Windows launcher |
+| `interface/servidor.py` | Local server entry point and single-instance lifecycle |
+| `interface/rta/` | Settings, model profiles, scope control, jobs, results, and HTTP API |
+| `interface/static/modules/` | Browser modules for controls, models, timebase, charts, and results |
+| `interface/static/assets/circuit.svg` | Reference circuit diagram |
+| `interface/iniciar-windows.ps1` | Windows-to-WSL launcher |
 | `ferramentas/graficos.py` | Saved-record plotting |
 | `testes/` | Analysis and integration tests |
 | `Makefile` | Build, test, plotting dependency, and utility targets |
@@ -385,8 +543,11 @@ The original utility programs remain available through `make antigos`:
 `identificar_rigol`, `consultar_rigol`, `parametros_onda`, and `receber_onda`,
 all built under `build/`.
 
-Instrument command reference:
-[Rigol DHO800/DHO900 Programming Guide](https://download.rigol.com/en/Manual/Digital%20Oscilloscope/DHO900/DHO800900_ProgrammingGuide_EN.pdf).
+Instrument references:
+
+- [Rigol DHO800/DHO900 Programming Guide](https://download.rigol.com/en/Manual/Digital%20Oscilloscope/DHO900/DHO800900_ProgrammingGuide_EN.pdf)
+- [Rigol DHO800 Data Sheet](https://www.rigol.com/dam/global/downloads/brochures/en/data-sheet/oscilloscopes/DHO800_DataSheet_EN.pdf)
+- [Rigol DHO900 Data Sheet](https://www.rigol.com/dam/global/downloads/brochures/en/data-sheet/oscilloscopes/DHO900_DataSheet.pdf)
 
 ## Author
 
