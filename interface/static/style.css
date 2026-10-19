@@ -1075,3 +1075,8 @@ td small{
   .app-footer{
     flex-wrap:wrap}
 }
+
+.progress-panel.failed { border: 1px solid #c3544c; }
+.progress-panel.failed #jobMessage { color: #9f302a; }
+.progress-panel.failed #jobRecovery { color: var(--ink); line-height: 1.6; }
+.progress-panel.failed #jobReview { margin: 0 0 12px; }

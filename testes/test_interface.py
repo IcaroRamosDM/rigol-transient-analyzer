@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import subprocess
@@ -10,6 +11,7 @@ import time
 import unittest
 from unittest import mock
 from urllib.error import HTTPError
+from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,6 +97,22 @@ class InterfaceTests(InterfaceHarness, unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             self.request("/missing")
         self.assertEqual(caught.exception.code, 404)
+
+    def test_all_javascript_imports_are_served(self):
+        pending = ["/app.js"]
+        checked = set()
+        while pending:
+            path = pending.pop()
+            if path in checked:
+                continue
+            code, body = self.request(path)
+            self.assertEqual(code, 200, path)
+            checked.add(path)
+            for relative in re.findall(r'(?:from\s+|import\s*)["\']([^"\']+)["\']', body.decode()):
+                self.assertTrue(relative.startswith("."), relative)
+                pending.append(urljoin(path, relative))
+        self.assertIn("/modules/jobs.js", checked)
+        self.assertGreater(len(checked), 8)
 
     def test_cross_origin_and_token_are_rejected(self):
         for token, headers in [(False, {}), (True, {"Origin": "https://example.org"})]:

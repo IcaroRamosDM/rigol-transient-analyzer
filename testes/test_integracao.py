@@ -133,6 +133,8 @@ class Instrumento:
                     codigo = 32768 + (20000 if ligado else 0)
                 if self.falha == "saturado" and self.canal == 1:
                     codigo = 0
+                if self.falha == "saturado_ch2" and self.canal == 2:
+                    codigo = 65535
                 dados.extend(struct.pack("<H", codigo))
             anunciado = len(dados) + (2 if self.falha == "comprimento" else 0)
             cabecalho = f"#9{anunciado:09d}".encode()

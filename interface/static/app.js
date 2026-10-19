@@ -1,3 +1,4 @@
+import { renderJob, poll } from "./modules/jobs.js";
 import { initWorkbench } from "./modules/workbench.js";
 import { t } from "./modules/i18n.js";
 import { configureTimebase, initTimebase } from "./modules/timebase.js";
@@ -43,55 +44,11 @@ async function start(mode) {
   } catch (error) { say(error.message, "error"); }
   finally { S.busy = false; controls(); }
 }
-function renderJob() {
-  const job = S.job;
-  $("progressPanel").hidden = !job || (!active() && S.run && S.run.id !== job.id);
-  if (!job) return;
-  $("jobMessage").textContent = t(job.message);
-  $("jobCapture").textContent = job.capture ?
-    t("Captura ") + job.capture + t(" de ") + job.total : t("Preparando ") + job.total + t(" captura(s)");
-  $("jobMode").textContent = job.mode === "demo" ? t("Demonstração") : job.mode==="reanalysis"?t("Reanálise de arquivo"):t("Medição real");
-  $("jobMode").className = "badge " + (job.mode === "demo" ? "demo" : job.mode==="reanalysis"?"file":"real");
-  $("jobSpinner").hidden = !active();
-  $("jobLogs").textContent = job.logs.join("\n");
-  const phase = ["conectando", "configurando", "preparando"].includes(job.phase) ? 0 :
-    ["aguardando_disparo", "transferindo", "simulando"].includes(job.phase) ? 1 :
-    job.phase === "analisando" ? 2 : 3;
-  document.querySelectorAll("[data-phase]").forEach(item => {
-    item.classList.toggle("active", Number(item.dataset.phase) <= phase);
-  });
-}
-let polling = false;
-async function poll() {
-  if (polling || S.closed || !S.ready) return;
-  polling = true;
-  try {
-    const status = await api("/api/status");
-    S.online = true;
-    S.closed = status.closed;
-    S.connection = status.connection;
-    S.scope = status.scope;
-    S.job = status.job;
-    controls(); renderJob();
-    if (S.job && !active() && S.loadedJob !== S.job.id) {
-      S.loadedJob = S.job.id;
-      if (["done", "attention"].includes(S.job.state)) {
-        await openRun(S.job.id);
-        say(S.job.message + (S.job.mode === "demo" ? t(" · sinal sintético.") : S.job.mode==="reanalysis"?"":t(" · dados reais salvos.")),
-          S.job.state === "attention" ? "attention" : "");
-        await refreshHistory();
-      } else {
-        say(S.job.message, S.job.state === "error" ? "error" : "attention");
-        await refreshHistory();
-      }
-    }
-  } catch (error) { S.online=false; controls(); say(error.message, "error"); }
-  finally { polling = false; }
-}
 document.querySelectorAll("[data-view]").forEach(button=>button.addEventListener("click",()=>showView(button.dataset.view)));
 inputs.filter(input=>input.id!=="timeDiv").forEach(input=>input.addEventListener("change",()=>{controls();saveConfig();}));
 $("settingsForm").addEventListener("submit",e=>{e.preventDefault();start("real");});
 $("connect").addEventListener("click",connect);
+$("jobReview").addEventListener("click",()=>showView("rigol"));
 $("demo").addEventListener("click",()=>start("demo"));
 $("emptyDemo").addEventListener("click",()=>start("demo"));
 $("cancel").addEventListener("click",async()=>{try{S.job=await api("/api/cancel",{});renderJob();controls();}catch(e){say(e.message,"error");}});

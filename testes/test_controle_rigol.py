@@ -87,6 +87,43 @@ class RigolControls(harness.InterfaceHarness, unittest.TestCase):
         self.cfg = dict(ip="127.0.0.1", port=self.instrument.porta, plots=False)
         self.app.connect(self.cfg)
 
+    def test_clipped_capture_can_be_retried_without_reconnecting(self):
+        for fault, channel in [("saturado", 1), ("saturado_ch2", 2)]:
+            with self.subTest(channel=channel):
+                self.instrument.falha = fault
+                cfg = self.cfg | dict(points=1000, timeout=1)
+                self.app.start(dict(mode="real", settings=cfg))
+                failed = self.wait()
+                self.assertEqual(failed["state"], "error", failed)
+                self.assertEqual(failed["failure"], dict(kind="clipping", channel=channel, point=0))
+                self.assertTrue(self.app.snapshot()["connection"]["connected"])
+                self.assertFalse(self.app.snapshot()["scope"]["busy"])
+                self.assertIsNone(self.app.process)
+                self.assertNotIn(failed["id"], [row["id"] for row in self.app.history()])
+                self.assertIn("saturou", failed["message"])
+
+                # Keep the same identified session; correct the simulated signal only.
+                self.instrument.falha = None
+                self.app.scope_action(dict(action="run", settings=cfg))
+                self.app.start(dict(mode="real", settings=cfg))
+                retried = self.wait()
+                self.assertEqual(retried["state"], "done", retried)
+                self.assertIsNone(retried["failure"])
+                self.assertIn(retried["id"], [row["id"] for row in self.app.history()])
+
+        code, body = self.request("/api/shutdown", {})
+        self.assertEqual(code, 200)
+        self.assertTrue(json.loads(body)["closed"])
+
+    def test_protocol_failure_still_requires_reconnection(self):
+        self.instrument.falha = "base"
+        self.app.start(dict(mode="real", settings=self.cfg | dict(points=1000, timeout=1)))
+        job = self.wait()
+        self.assertEqual(job["state"], "error", job)
+        self.assertIsNone(job["failure"])
+        self.assertFalse(self.app.snapshot()["connection"]["connected"])
+        self.assertIsNone(self.app.process)
+
     def tearDown(self):
         try:
             super().tearDown()

@@ -2,6 +2,15 @@
 export const language=(()=>{try{return localStorage.getItem("rta.language")==="en"?"en":"pt";}catch(_){return "pt";}})();
 export const locale=language==="en"?"en-US":"pt-BR";
 export const english={
+  "O gráfico exibido pertence a um ensaio anterior.": "The displayed plot belongs to an earlier run.",
+  "Conferir ajustes do Rigol": "Review Rigol settings",
+  "Confira a ponta, o terra, a escala e a posição vertical. Depois, clique em Iniciar medição real para tentar novamente.": "Check the probe, ground, scale and vertical position. Then click Start real measurement to retry.",
+  "A captura foi interrompida. Consulte os detalhes e confira a conexão antes de tentar novamente.": "The capture was interrupted. Read the details and check the connection before retrying.",
+  "Esta captura foi interrompida.": "This capture was interrupted.",
+  "Confira as conexões e os ajustes antes de tentar novamente.": "Check connections and settings before retrying.",
+  "saturou no ponto": "clipped at sample",
+  "confira escala, offset e conexoes.": "check scale, offset and connections.",
+
   "Pular para o conteúdo": "Skip to content",
   "Rigol Transient Analyzer, início": "Rigol Transient Analyzer, home",
   "ÁREA DE TRABALHO": "WORKSPACE",

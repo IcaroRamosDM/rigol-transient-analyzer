@@ -122,7 +122,7 @@ class App(Workbench):
                               "O programa de medição não foi compilado. Execute make.", 503)
             run = "ui_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ_") + uuid.uuid4().hex[:8]
             self.job = dict(id=run, mode=mode, state="running", phase="preparando",
-                            message="Preparando o ensaio", capture=0, total=cfg["captures"],
+                            message="Preparando o ensaio", failure=None, capture=0, total=cfg["captures"],
                             started_at=now(), settings=cfg, logs=[], cancel_requested=False, source=source, backup_requested=payload.get("backup",False), backup_id=None)
             threading.Thread(target=self._work, args=(run, mode, cfg), daemon=True).start()
             return self.snapshot()["job"]
@@ -217,7 +217,13 @@ class App(Workbench):
                     self.job.update(state="done" if code == 0 else "attention", message=message)
                 else:
                     self.job.update(state="error", message=error or "O ensaio não foi concluído. Consulte os detalhes.")
-                    if mode == "real":
+                    # Clipping invalidates this capture, not the verified instrument identity.
+                    clipped = re.fullmatch(
+                        r"CH([12]) saturou no ponto (\d+); confira escala, offset e conexoes\.", error)
+                    if mode == "real" and clipped:
+                        self.job["failure"] = dict(kind="clipping",
+                                                  channel=int(clipped[1]), point=int(clipped[2]))
+                    elif mode == "real":
                         self.connection["connected"] = False
                 self.job.update(finished_at=now(), exit_code=code)
 

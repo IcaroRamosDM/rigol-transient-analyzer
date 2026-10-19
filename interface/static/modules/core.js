@@ -102,6 +102,8 @@ export function controls() {
   $("shutdown").disabled = busy;
   $("shutdownMobile").disabled = busy;
   $("startHint").textContent = active() ? t("Aguarde o ensaio ou use Cancelar.") :
+    currentConnection() && S.job?.state === "error" && S.job.failure?.kind === "clipping" ?
+      t("Confira as conexões e os ajustes antes de tentar novamente.") :
     currentConnection() ? t("Prepare a fonte e o gerador antes de iniciar.") :
     t("Conecte o Rigol para habilitar a medição real.");
   const connected = currentConnection() && !S.closed && S.online;

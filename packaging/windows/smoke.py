@@ -102,6 +102,7 @@ def main():
         duplicate=subprocess.run([str(app),"--no-browser","--quiet"],env=env,timeout=10,**hidden)
         assert duplicate.returncode==0
         assert json.loads(api("/api/bootstrap"))["instance"]==data["instance"]
+        assert b"renderJob" in api("/modules/jobs.js")
         report["single_instance"] = True
         api("/api/run",dict(mode="demo",settings=dict(plots=True)))
         job=wait_job()
@@ -135,9 +136,20 @@ def main():
         assert b"Saved profiles" in api("/modules/i18n.js")
         report["profiles_reanalysis_comparison_pdf_bilingual_assets"]=True
         instrument=SetupScope()
-        instrument.falha="sem_disparo"
         cfg=dict(ip="127.0.0.1",port=instrument.porta,points=1000,plots=False,timeout=10)
         api("/api/connect",cfg)
+        for fault,channel in [("saturado",1),("saturado_ch2",2)]:
+            instrument.falha=fault
+            api("/api/run",dict(mode="real",settings=cfg))
+            failed=wait_job()
+            assert failed["state"]=="error",failed
+            assert failed["failure"]==dict(kind="clipping",channel=channel,point=0)
+            assert json.loads(api("/api/status"))["connection"]["connected"]
+            instrument.falha=None
+            api("/api/run",dict(mode="real",settings=cfg))
+            assert wait_job()["state"]=="done"
+        report["clipping_recovery_without_reconnect"]=True
+        instrument.falha="sem_disparo"
         backup=json.loads(api("/api/backup",dict(settings=cfg)))
         instrument.parametros[":CHAN1:SCAL"]="2"
         restored=json.loads(api("/api/restore",dict(settings=cfg,id=backup["id"])))
