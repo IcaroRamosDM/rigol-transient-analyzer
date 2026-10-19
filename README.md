@@ -63,6 +63,62 @@ Simulation generates synthetic data and does not communicate with the
 oscilloscope. A successful run prints `Ensaio concluido` and the path to
 a new results directory.
 
+## Local browser interface
+
+Start the application from the project directory:
+
+```bash
+make interface
+```
+
+It opens `http://localhost:8765` in the browser. On Windows, with Ubuntu
+under WSL installed, you can also double-click `iniciar-interface.cmd`
+from the project folder. The Windows launcher defaults to the
+`Ubuntu-26.04` distribution; another installed distribution can be selected
+with `iniciar-interface.cmd -Distribution NAME`. On Linux, `./iniciar-interface.sh` builds the
+executable and starts the interface.
+
+The interface is in Portuguese and has three work areas:
+
+1. **Medição (measurement):** enter the scope IP, click **Conectar**, match
+   the probe factors to their physical switches, set the sense resistance
+   and capture count, then click **Iniciar medição real**.
+2. **Preparação (setup):** consult the circuit diagram, probe connections,
+   supply settings, and generator settings.
+3. **Histórico (history):** open saved runs, select captures and transitions,
+   and download samples, event metrics, configuration, statistics, and
+   available PNG images.
+
+Use **Explorar demonstração** to try the complete workflow without an
+instrument. This mode produces a clearly labeled synthetic 10,000-sample
+record per capture. It never contacts the Rigol. Real measurements retain
+the selected memory depth, initially 1,000,000 samples per channel.
+
+The voltage and current charts share the time axis. Drag across a chart
+or use the zoom buttons to inspect a smaller interval. Select a transition
+for its metrics, choose **Janela do evento** for the analysis window, or
+**Borda ±5 µs** for the switching detail. Plot reduction preserves extrema
+from both channels; C calculates metrics from the complete record.
+
+Progress distinguishes configuration, waiting for a trigger, waveform
+transfer, analysis, and file export. **Cancelar ensaio** requests graceful
+cancellation; for real acquisition, the application also attempts to
+confirm STOP on the scope. The supply and generator remain manually
+controlled. **Encerrar aplicativo** stops the local interface after the
+current operation has finished or been cancelled.
+
+The interface binds only to the local loopback address. It uses Python's
+standard library and local HTML, CSS, and JavaScript assets. Acquisition
+and analysis still run in the same C executable. PNG export uses the
+existing optional Matplotlib dependencies.
+
+To run without automatically opening a browser, or to select another
+local port (close an already running instance first):
+
+```bash
+make interface UI_ARGS="--no-browser --port 8766"
+```
+
 ## Reference bench setup
 
 The physical setup used to validate acquisition consists of:
@@ -320,6 +376,7 @@ tool operation separately from electrical interpretation of the waveforms.
 | `src/analise.c` | Event detection, measurements, synthetic waveforms |
 | `src/arquivos.c` | Export, CSV import, statistics, plot invocation |
 | `src/comum.c`, `include/carac.h` | Shared types and utilities |
+| `interface/` | Local server, browser interface, and Windows launcher |
 | `ferramentas/graficos.py` | Saved-record plotting |
 | `testes/` | Analysis and integration tests |
 | `Makefile` | Build, test, plotting dependency, and utility targets |

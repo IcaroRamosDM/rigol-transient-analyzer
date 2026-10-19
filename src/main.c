@@ -8,6 +8,12 @@
 
 static void interromper(int sinal) { (void)sinal; ct_cancelado=1; }
 
+static void progresso(const char *fase, unsigned captura, unsigned total)
+{
+  if (getenv("RTA_PROGRESS"))
+    printf("@RTA %s %u %u\n", fase, captura, total);
+}
+
 static void ajuda(const char *programa)
 {
   printf("Uso: %s [opcoes] ENDERECO_IP\n"
@@ -57,6 +63,7 @@ static int inteiro(const char *s,unsigned *valor)
 
 int main(int argc,char **argv)
 {
+  setvbuf(stdout, NULL, _IOLBF, 0);
   CtConfig cfg={.resistor=1,.baixo_a=.05,.alto_a=.15,.janela_s=50e-6,
     .guarda_s=20e-6,.horizonte_s=300e-6,.tolerancia_v=.05,.permanencia_s=20e-6,
     .timeout_s=5,.escala_v=.5,.escala_shunt=.1,.nominal_v=5,.tempo_div=.0002,
@@ -140,9 +147,13 @@ int main(int argc,char **argv)
   sigaction(SIGINT,&acao,NULL); sigaction(SIGTERM,&acao,NULL);
   CtRede rede={.fd=-1}; char id[256]="";
   if (!cfg.simular && !cfg.entrada) {
+    progresso("conectando",0,cfg.capturas);
     if (ct_conectar(&rede,&cfg,erro)<0 ||
         ct_identificar(&rede,id,sizeof id,erro)<0) goto falha;
-    if (cfg.configurar && ct_configurar(&rede,&cfg,erro)<0) goto falha;
+    if (cfg.configurar) {
+      progresso("configurando",0,cfg.capturas);
+      if (ct_configurar(&rede,&cfg,erro)<0) goto falha;
+    }
     if (cfg.existente && ct_comando(&rede,":STOP",erro)<0) goto falha;
   }
   if (ct_diretorio(cfg.saida,raiz,sizeof raiz,erro)<0) goto falha;
@@ -152,18 +163,31 @@ int main(int argc,char **argv)
   for (unsigned j=1;j<=cfg.capturas;++j) {
     CtCaptura c={0}; CtAnalise a={0};
     int resultado;
-    if (cfg.simular) resultado=ct_simular(&c,&cfg,j,erro);
+    if (cfg.simular) {
+      progresso("simulando",j,cfg.capturas);
+      resultado=ct_simular(&c,&cfg,j,erro);
+    }
     else if (cfg.entrada) resultado=ct_importar(cfg.entrada,&c,erro);
     else {
       c.numero=j; c.configurado=cfg.configurar;
       snprintf(c.instrumento,sizeof c.instrumento,"%s",id);
       snprintf(c.origem,sizeof c.origem,"%s",cfg.existente?"MEMORIA_EXISTENTE":"CAPTURA_NOVA");
+      progresso("aguardando_disparo",j,cfg.capturas);
       resultado=cfg.existente ? 0:ct_nova(&rede,&cfg,erro);
-      if (!resultado) resultado=ct_receber(&rede,&cfg,&c,erro);
+      if (!resultado) {
+        progresso("transferindo",j,cfg.capturas);
+        resultado=ct_receber(&rede,&cfg,&c,erro);
+      }
       ct_instante(c.instante,sizeof c.instante);
     }
-    if (!resultado) resultado=ct_analisar(&c,&cfg,&a,erro);
-    if (!resultado) resultado=ct_exportar(raiz,&c,&cfg,&a,erro);
+    if (!resultado) {
+      progresso("analisando",j,cfg.capturas);
+      resultado=ct_analisar(&c,&cfg,&a,erro);
+    }
+    if (!resultado) {
+      progresso("exportando",j,cfg.capturas);
+      resultado=ct_exportar(raiz,&c,&cfg,&a,erro);
+    }
     if (!resultado) {
       CtResumo v=ct_resumir(c.v,c.n),i=ct_resumir(c.i,c.n);
       printf("\nCaptura %u [%s]: %zu pontos; dt=%.9g s\n"
@@ -189,7 +213,11 @@ int main(int argc,char **argv)
   }
   ct_desconectar(&rede);
   if (ct_finalizar(raiz,&cfg,concluidas,eventos,validos,acomodados,erro)<0) goto falha;
-  if (cfg.graficos && ct_graficos(raiz,erro)<0) goto falha;
+  if (cfg.graficos) {
+    progresso("graficos",cfg.capturas,cfg.capturas);
+    if (ct_graficos(raiz,erro)<0) goto falha;
+  }
+  progresso("finalizando",cfg.capturas,cfg.capturas);
   if (!validos) { fputs("Nenhuma transicao com janelas validas; dados exportados para diagnostico.\n",stderr); return 2; }
   puts("Ensaio concluido. Consulte eventos.csv, estatisticas.csv e metadados.json.");
   return EXIT_SUCCESS;

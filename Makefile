@@ -7,7 +7,7 @@ OBJETOS = $(FONTES:src/%.c=build/%.o)
 DEPS = $(OBJETOS:.o=.d)
 PYTHON ?= python3
 
-.PHONY: all antigos test sanitize dependencias graficos clean
+.PHONY: all antigos test sanitize dependencias graficos clean interface
 
 all: build/carac_transientes
 
@@ -51,6 +51,9 @@ dependencias:
 graficos:
 	@test -n "$(ENSAIO)" || (echo 'Use: make graficos ENSAIO=resultados/pasta_do_ensaio'; exit 1)
 	.venv/bin/python ferramentas/graficos.py "$(ENSAIO)"
+
+interface: all
+	$(PYTHON) interface/servidor.py $(UI_ARGS)
 
 clean:
 	$(RM) $(OBJETOS) $(DEPS) build/carac_transientes build/test_analise build/test_analise_sanitize build/carac_transientes_sanitize
