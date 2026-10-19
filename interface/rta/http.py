@@ -8,6 +8,7 @@ import shutil
 import threading
 
 from .common import DEFAULTS, ACTIVE, Problem
+from .timebase import TIMEBASE
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "RigolTransientAnalyzer/1"
@@ -55,7 +56,7 @@ class Handler(BaseHTTPRequestHandler):
             app = self.server.app
             if url.path == "/api/bootstrap":
                 self.json(dict(app="Rigol Transient Analyzer", token=app.token,
-                               defaults=DEFAULTS, **app.snapshot()))
+                               defaults=DEFAULTS, timebase=TIMEBASE, **app.snapshot()))
             elif url.path == "/api/status":
                 self.json(app.snapshot())
             elif url.path == "/api/history":
@@ -72,7 +73,7 @@ class Handler(BaseHTTPRequestHandler):
                 with file.open("rb") as stream:
                     shutil.copyfileobj(stream, self.wfile, 65536)
             elif url.path in ("/", "/app.js", "/style.css", "/modules/core.js",
-                              "/modules/chart.js", "/modules/results.js", "/modules/rigol.js",
+                              "/modules/chart.js", "/modules/results.js", "/modules/rigol.js", "/modules/timebase.js",
                               "/assets/circuit.svg", "/rigol.css"):
                 file = app.root / "interface/static" / ("index.html" if url.path == "/" else url.path[1:])
                 data = file.read_bytes()

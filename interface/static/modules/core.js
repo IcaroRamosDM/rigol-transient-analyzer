@@ -1,4 +1,5 @@
 "use strict";
+import { setTimeSeconds, updateTimeControls } from "./timebase.js";
 export const $ = id => document.getElementById(id);
 export const inputs = Array.from(document.querySelectorAll("[data-key]"));
 export const S = {scope: {busy:false, snapshot:null, error:""}, online: true, token: "", defaults: {}, connection: {}, job: null, busy: false, ready: false,
@@ -67,6 +68,7 @@ export function fillConfig(defaults) {
   for (const input of inputs) {
     const key = input.dataset.key;
     const value = Object.hasOwn(saved, key) ? saved[key] : defaults[key];
+    if (key === "time_div") { setTimeSeconds(Number(value),false); continue; }
     if (input.type === "checkbox") input.checked = typeof value === "boolean" ? value : defaults[key];
     else input.value = ["ip", "bandwidth"].includes(key) ? value :
       Number(value) * Number(input.dataset.factor || 1);
@@ -82,6 +84,7 @@ export function currentConnection() {
 export function controls() {
   const busy = S.busy || active() || S.scope.busy || S.closed || !S.ready || !S.online;
   for (const input of inputs) input.disabled = busy;
+  updateTimeControls(busy);
   $("connect").disabled = busy;
   $("demo").disabled = busy;
   $("emptyDemo").disabled = busy;

@@ -1,3 +1,4 @@
+import { configureTimebase, initTimebase } from "./modules/timebase.js";
 import { $, S, inputs, titles, active, controls, api, say, config, saveConfig, fillConfig } from "./modules/core.js";
 import { draw, selectEvent, setRange, eventRange, zoom } from "./modules/chart.js";
 import { refreshHistory, openRun, selectCapture, renderEvent } from "./modules/results.js";
@@ -84,7 +85,7 @@ async function poll() {
   finally { polling = false; }
 }
 document.querySelectorAll("[data-view]").forEach(button=>button.addEventListener("click",()=>showView(button.dataset.view)));
-inputs.forEach(input=>input.addEventListener("change",()=>{saveConfig();controls();}));
+inputs.filter(input=>input.id!=="timeDiv").forEach(input=>input.addEventListener("change",()=>{saveConfig();controls();}));
 $("settingsForm").addEventListener("submit",e=>{e.preventDefault();start("real");});
 $("connect").addEventListener("click",connect);
 $("demo").addEventListener("click",()=>start("demo"));
@@ -108,6 +109,7 @@ async function init(){
   try{
     const data=await api("/api/bootstrap");
     S.token=data.token;S.defaults=data.defaults;S.connection=data.connection;S.job=data.job;S.scope=data.scope;S.closed=data.closed;
+    configureTimebase(data.timebase);
     fillConfig(data.defaults);S.ready=true;controls();renderJob();
     await refreshHistory();await poll();
     if (!S.run && !active()) {
@@ -120,4 +122,5 @@ document.addEventListener("rta:view", e=>showView(e.detail));
 document.addEventListener("rta:job-render", renderJob);
 document.addEventListener("rta:event-render", renderEvent);
 initRigol();
+initTimebase(()=>{saveConfig();controls();});
 init();setInterval(poll,1000);

@@ -1,3 +1,4 @@
+import { setTimeSeconds, formatTime } from "./timebase.js";
 import { $, S, api, config, controls, currentConnection, saveConfig, say, number, units, date } from "./core.js";
 
 const stateLabels = {STOP:"STOP · congelado", RUN:"RUN · executando", WAIT:"WAIT · aguardando disparo",
@@ -36,7 +37,7 @@ function renderScope() {
       " · centro "+units(-channel.offset_v,1,"V",3)+" · "+channel.coupling+
       " · "+(channel.bandwidth==="20M"?"20 MHz":channel.bandwidth)));
   }
-  $("scopeReadback").append(cell("Tempo por divisão", units(state.time_div,1e6,"µs",3)),
+  $("scopeReadback").append(cell("Tempo por divisão", formatTime(state.time_div)),
     cell("Memória", state.memory_points===null?"Automática":number(state.memory_points,0)+" pontos"),
     cell("Disparo", state.trigger_source+" · "+(state.trigger_slope==="POS"?"subida":state.trigger_slope)+
       " · "+units(state.trigger_level,1000,"mV",1)+" · "+state.trigger_sweep));
@@ -67,6 +68,7 @@ export function initRigol() {
   $("rigolPreset").addEventListener("click",()=>{
     for (const key of profileKeys) {
       const input=document.querySelector('[data-key="'+key+'"]');
+      if (key==="time_div") { setTimeSeconds(S.defaults[key]); continue; }
       input.value=key==="bandwidth" ? S.defaults[key] :
         S.defaults[key]*Number(input.dataset.factor||1);
     }

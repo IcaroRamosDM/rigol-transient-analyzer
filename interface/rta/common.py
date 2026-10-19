@@ -5,6 +5,8 @@ import ipaddress
 import json
 import math
 
+from .timebase import valid_time, floor_time, next_time, format_time
+
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULTS = dict(ip="169.254.112.67", port=5555, probe_v=10, probe_i=1,
                 resistor=1, captures=1, points=1000000, nominal=5,
@@ -92,4 +94,8 @@ def settings(data):
             raise Problem("Escala fora da faixa da ponta: " + key)
     if not 5e-9 <= cfg["time_div"] <= 1000:
         raise Problem("Tempo por divisão fora da faixa: 5 ns a 1000 s.")
+    if not valid_time(cfg["time_div"]):
+        value = cfg["time_div"]
+        raise Problem("Tempo por divisão fora do passo do Rigol. Use " +
+                      format_time(floor_time(value)) + " ou " + format_time(next_time(value)) + ".")
     return cfg

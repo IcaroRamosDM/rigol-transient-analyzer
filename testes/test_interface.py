@@ -82,6 +82,7 @@ class InterfaceTests(InterfaceHarness, unittest.TestCase):
         code, body = self.request("/api/bootstrap")
         data = json.loads(body)
         self.assertEqual(code, 200)
+        self.assertEqual(data["timebase"]["min_ps"], 5000)
         self.assertEqual(data["defaults"]["probe_v"], 10)
         self.assertEqual(data["defaults"]["probe_i"], 1)
         self.assertFalse(data["connection"]["connected"])

@@ -19,3 +19,11 @@
 @media(max-width:760px){.circuit-hint{display:block}}
 
 .prep-grid > *, .rigol-grid > * {min-width:0}
+
+.time-control {display:flex;align-items:stretch;gap:5px;min-width:0}
+.time-control input {min-width:0;width:100%;appearance:textfield;-moz-appearance:textfield}
+.time-control input::-webkit-inner-spin-button,.time-control input::-webkit-outer-spin-button {appearance:none;margin:0}
+.time-control select {width:64px;flex:0 0 64px;padding-left:7px;padding-right:4px}
+.time-control button {flex:0 0 29px;padding:6px}
+.time-hint {font-size:10px;margin:6px 0 0}
+@media(max-width:450px){#rigolForm .time-field{grid-column:1/-1}}

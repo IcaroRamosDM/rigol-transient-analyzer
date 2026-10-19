@@ -163,14 +163,14 @@ class RigolControls(harness.InterfaceHarness, unittest.TestCase):
     def test_unknown_action_and_nonfinite_settings_never_touch_instrument(self):
         before = len(self.instrument.commands)
         for action, updates in [(":RUN;:STOP", {}), ("read", {"points":math.nan}),
-                                ("apply", {"scale_v":1e99}), ("apply", {"timeout":31})]:
+                                ("apply", {"scale_v":1e99}), ("apply", {"timeout":31}), ("apply", {"time_div":206e-6})]:
             with self.subTest(action=action, updates=updates), self.assertRaises(HTTPError):
                 self.action(action, **updates)
         self.assertEqual(self.instrument.commands[before:], [])
 
     def test_new_static_modules_and_asset_are_available(self):
         for path, marker in [("/modules/core.js", b"export const S"), ("/modules/chart.js", b"function draw"),
-                ("/modules/results.js", b"function openRun"), ("/modules/rigol.js", b"initRigol"),
+                ("/modules/results.js", b"function openRun"), ("/modules/rigol.js", b"initRigol"), ("/modules/timebase.js", b"configureTimebase"),
                 ("/assets/circuit.svg", b"IRFZ44N"), ("/rigol.css", b"rigol-grid")]:
             with self.subTest(path=path):
                 self.assertIn(marker, self.request(path)[1])
