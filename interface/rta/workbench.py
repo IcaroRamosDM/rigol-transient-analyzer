@@ -6,8 +6,13 @@ from .diagnostics import diagnose
 
 class Workbench:
     @contextmanager
-    def instrument_operation(self, data):
-        cfg=settings(data.get("settings",{}),self.connection.get("model"))
+    def instrument_operation(self, data, analysis=True):
+        values=data.get("settings",{})
+        if not analysis:
+            if not isinstance(values,dict):
+                raise Problem("Configuração desconhecida.")
+            values={key:values[key] for key in ("ip","port","model") if key in values}
+        cfg=settings(values,self.connection.get("model"))
         with self.lock:
             if self.closed or self.scope["busy"] or self.connection.get("checking") or (self.job and self.job["state"] in ACTIVE):
                 raise Problem("Aguarde a operação em andamento.",409)
@@ -44,11 +49,11 @@ class Workbench:
             return result
 
     def backup(self,data):
-        with self.instrument_operation(data) as cfg:
+        with self.instrument_operation(data, analysis=False) as cfg:
             return self.backups.create(cfg)
 
     def restore(self,data):
-        with self.instrument_operation(data) as cfg:
+        with self.instrument_operation(data, analysis=False) as cfg:
             result=self.backups.restore(data.get("id"),cfg)
             with self.lock:
                 self.scope["snapshot"]=result["snapshot"]

@@ -111,6 +111,8 @@ await poll();
 assert.equal(S.online,true);
 assert.equal(element("start").disabled,false,"Loading a result must not lock bench controls");
 resultError = false;
+await poll();
+assert.equal(S.loadedJob,"retry","A transient result-loading failure must be retried by the next poll");
 
 offline = true;
 await poll();
@@ -128,7 +130,7 @@ assert.equal(element("start").disabled,true);
 assert.equal(element("connect").disabled,false);
 assert.equal(element("shutdown").disabled,false);
 assert.equal(element("jobReview").hidden,false);
-assert.equal(element("jobReview").textContent,"Reconectar ao Rigol");
+assert.equal(element("jobReview").textContent,"Conferir conexão");
 assert.match(element("jobRecovery").textContent,/Ethernet/);
 assert.equal(element("progressPanel").hidden,false);
 assert.ok(historyCalls >= 3);
@@ -136,3 +138,19 @@ S.closed = true;
 controls();
 assert.equal(element("start").disabled,true);
 console.log("UI recovery checks passed");
+
+// An old browser tab can update its session after the local server restarts.
+let mutations=0,bootstraps=0;
+context.fetch=async(path,options)=>{
+ if(path==="/api/bootstrap"){bootstraps++;return {ok:true,status:200,json:async()=>({app:"Rigol Transient Analyzer",token:"new-session",instance:"new-instance"})};}
+ mutations++;
+ return options.headers["X-RTA-Token"]==="new-session"?
+   {ok:true,status:200,json:async()=>({recovered:true})}:
+   {ok:false,status:403,json:async()=>({error:"Reabra a interface para atualizar a sessão."})};
+};
+S.token="stale-session";
+const recovered=await core.namespace.api("/api/run",{mode:"demo"});
+assert.equal(recovered.recovered,true);
+assert.equal(mutations,2);assert.equal(bootstraps,1);
+assert.equal(S.token,"new-session");
+console.log("Session restart recovery checks passed");

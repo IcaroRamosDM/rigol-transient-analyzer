@@ -16,7 +16,9 @@ controls, configuration preservation, history, CSV/JSON/PNG exports and PDF repo
 
 ## Features
 
-- Portuguese/English interface with Signals and Transients modes on one setup screen.
+- Portuguese/English interface with a three-step setup and a separate saved-results workspace.
+- Explicit Rigol AUTO setup for voltage signals, followed by readback and a fresh capture.
+- Retry after clipping, empty memory, missing triggers and session restarts without locking the controls.
 - One to four selected analog voltage channels, limited by the connected model.
 - Guided scales, screen centers, 1x/10x probes, DC/AC coupling, bandwidth and edge trigger.
 - Fresh captures preserving existing Rigol settings, or reading frozen memory without a new acquisition.
@@ -52,52 +54,89 @@ The panel identifies plots from earlier runs and gives recovery instructions.
 For a missing trigger, check the input signal, selected trigger channel, probe ground,
 edge and trigger level before retrying.
 
-## Choose a measurement
+## First measurement
 
-1. Open the application and select **Medição / Measurement**.
-2. Under **O que você quer medir? / What would you like to measure?**, select
-   **Sinais / Signals** or **Transientes / Transients**.
-3. Optionally choose a **Starting point**: reference 5 V transients, 1 kHz generator,
-   or 3.3 V / 5 V digital signals. These fill the form without sending commands.
-   Enter the Rigol IP address, select automatic model detection, and click
-   **Conectar / Connect**. The identified model and serial appear beside the controls.
-4. Choose the configuration policy:
-   - **Configure through the interface**: set selected channels, physical probe
-     factors, volts/div, screen centers, coupling, bandwidth, time/div, memory
-     depth, trigger source, edge and level in volts. Time/div follows the model's
-     accepted steps and offers ns/us/ms/s units. Click **Apply and view on the Rigol**
-     to confirm settings and see continuous acquisition on its screen.
-   - **Preserve Rigol settings - fresh capture**: keep the instrument's channel,
-     timebase, memory and trigger configuration. Only acquisition state and
-     waveform transfer settings change. The original trigger sweep is restored
-     after acquisition; the scope ends in STOP. Select the channels to save.
-   - **Read frozen memory - no new capture**: stop and read the current record once.
-     The result is labeled existing memory, not a fresh acquisition.
-5. **Read Rigol settings into the form** reads actual channel/trigger settings
-   without applying the form. Review the values before choosing to apply them.
-6. Click **Start real measurement**. Review the saved chart and metrics, then use
-   **Export** for samples, metrics, metadata and plots, or generate a PDF report.
-   **Explore demonstration** uses synthetic signals and never accesses the scope.
+1. Open **Medição / Measurement**. Setup has three steps:
+   **Medição e conexão / Measurement and connection**, **Canais e ajustes /
+   Channels and settings**, and **Conferir e capturar / Review and capture**.
+2. In step 1, choose **Sinais / Signals** for voltage measurements or
+   **Transientes / Transients** for supply response to a switched load.
+   Enter the instrument's **IPv4 address**, then click **Conectar / Connect**.
+   Automatic model detection is recommended; manual model and network port
+   are under **Modelo e porta de rede / Model and network port**.
+3. In step 2, select the channels to save. For Signals, the fastest setup is
+   **Enquadrar sinais no Rigol (AUTO) / Fit signals on the Rigol (AUTO)**.
+   This explicitly invokes the instrument's AUTO function, limits acquisition
+   memory to 1,000,000 points, reads the resulting settings and selects
+   **Keep Rigol settings** for the next capture. Review the physical probe
+   switches and the waveforms on the instrument.
+4. Continue to step 3 and click **Iniciar medição real / Start real measurement**.
+   The application takes a fresh single acquisition and reads all selected
+   channels from the same stopped record. **Cancelar medição em andamento /
+   Cancel current measurement** remains available during acquisition.
+5. A completed capture opens **Resultados / Results** with its timestamp,
+   origin, plots and channel metrics. This is a saved waveform, without
+   continuous updates. Use **Exportar / Export** for original samples,
+   metadata, CSV metrics and optional PNGs, or create a PDF report.
+   **Nova medição / editar ajustes / New measurement / edit settings** returns
+   to setup; earlier results remain available through Results and History.
 
-For **Signals**, select the desired channels; every channel is displayed and
-exported in volts. No shunt resistor is required. Choose an appropriate scale and
-center for the input signal, and a trigger level between its low and high levels.
-For a roughly 1 kHz signal, 200 us/div gives a useful overview. Use DC coupling to
-include the DC component; AC coupling intentionally removes it in the instrument.
-Probe factors in the form must match the physical probe switches.
+The application starts in setup. Reloading the page does not present an old
+completed capture as a new measurement. **Testar sem instrumento / Try without
+an instrument** is available in step 1 and uses 10,000 synthetic samples without
+accessing the Rigol. Demonstrations are visibly identified in results.
 
-For **Transients**, select the supply-voltage and sense-resistor channels, enter
-the nominal supply voltage and the actual sense resistance, and set low/high
-current thresholds plus analysis windows under advanced settings. Both channels
-must use DC coupling. Changing nominal voltage centers the supply channel;
-check the trigger voltage against the expected sense-voltage levels. The
-5 V preset restores the reference setup; other supplies and load currents need
-corresponding channel scales, trigger and analysis criteria.
+### Configuration choices
 
-Save the complete setup under **Rigol > Saved profiles**. Loading a profile
+- **Keep Rigol settings - fresh capture** uses the instrument's current scales,
+  probe factors, coupling, timebase, memory and trigger. Read-only channel
+  summaries show the last settings read from the instrument. **Read Rigol
+  settings** refreshes them without applying the form. Acquisition state and
+  waveform-transfer settings change; the original trigger sweep is restored
+  and the scope ends in STOP.
+- **Configure through the interface** exposes probe factors, volts/div, screen
+  centers, time/div, memory and edge-trigger controls. Coupling and bandwidth
+  are inside each channel's expandable controls. Time/div follows the accepted
+  model steps and offers ns/us/ms/s units. **Apply and view on the Rigol** verifies
+  readback and runs the scope continuously; **Start real measurement** applies
+  the same settings before its single acquisition.
+- **Read current memory - no new capture** stops and saves the current record
+  once. The result is labeled existing memory. If the instrument has no stored
+  samples, the error offers **Take a fresh capture**, preserving its current
+  hardware settings.
+
+Presets for 5 V transients, a 1 kHz generator and 3.3 V / 5 V digital signals
+only fill the form. They do not identify the wiring or set the source/generator
+output. Review them before applying. The physical probe switches must match
+the selected attenuation; software cannot sense their position.
+
+For **Signals**, every selected channel is displayed and exported in volts.
+Use DC coupling to include the DC component; AC coupling removes it in the
+instrument. AUTO is intended to frame observable signals; it does not validate
+the physical connection, probe attenuation or electrical interpretation.
+The app can preserve instrument settings with probe factors/couplings outside
+the guided form's supported 1x/10x and AC/DC options.
+
+For **Transients**, select two distinct channels: supply voltage and voltage
+across the sense resistor. In step 3, enter the actual sense resistance and
+nominal supply voltage, then review current thresholds and analysis windows.
+Both channels must use DC coupling. Current is sense voltage divided by
+resistance; the trigger level is in **volts**, while thresholds are in **mA**.
+**Use the midpoint of the current thresholds** fills a suitable edge-trigger
+level for the resistor channel. The 5 V preset is specific to the reference
+bench; other supplies and loads require suitable scales and analysis criteria.
+
+Capture errors keep the previous saved results intact. If the same instrument
+still responds, **Retry** remains available. Use **Review Rigol settings** to
+return directly to step 2, or **Review connection** to return to step 1.
+A stale browser session recovers its local token after an application restart.
+A malformed local result is excluded from history without hiding other results.
+
+Save complete settings under **Rigol > Saved profiles**. Loading a profile
 changes the form only. Backups preserve the instrument's full setup separately.
-History opens both old and new capture formats. Transition comparison and
-window reanalysis apply to Transients; Signals provides full-record metrics.
+Transition comparison and window reanalysis apply to Transients; Signals
+provides whole-record metrics. Chart zoom affects the displayed window only,
+not the saved samples or whole-record measurements.
 
 ### Signal metric limits
 
@@ -242,7 +281,7 @@ provided with the release. To calculate a downloaded installer's checksum
 in PowerShell, replace the filename with the version you downloaded:
 
 ```powershell
-Get-FileHash .\RigolTransientAnalyzer-0.3.0-windows-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\RigolTransientAnalyzer-0.4.0-windows-x64-setup.exe -Algorithm SHA256
 ```
 
 Compare the value with the release checksum file. Physical model-validation
@@ -763,7 +802,7 @@ Software checks cover event detection, known analytical settling behavior,
 incomplete windows, late disturbances, invalid data, fragmented network
 transfers, trigger sequencing, export, reanalysis, and plots. Interface
 checks cover configuration readback, exclusive operations, cancellation,
-history, downloads, and local-access restrictions. Model checks exercise
+history, downloads, empty-memory recovery, restarted sessions, hidden-step validation, and local-access restrictions. Model checks exercise
 every catalog entry's configuration, DHO914 waveform acquisition, model
 limits, and rejection of unknown, mismatched, or swapped instruments
 before control commands are sent.
@@ -797,7 +836,7 @@ operation separately from electrical interpretation of the waveforms.
 | `VERSION` | Application and installer version |
 | `include/rigol_models.def` | Shared model catalog and capability limits |
 | `src/sinais.c` | Voltage-signal capture, RMS, frequency, period and duty measurements |
-| `interface/rta/measurement.py`, `interface/static/modules/measurement.js` | Mode, channel and trigger contracts and unified controls |
+| `interface/rta/measurement.py`, `interface/static/modules/measurement.js` | Mode, channel and trigger contracts and channel controls |
 | `src/analise.c` | Event detection, measurements, synthetic waveforms |
 | `src/arquivos.c` | Export, CSV import, statistics, plot invocation |
 | `src/comum.c`, `include/carac.h` | Shared types and utilities |
@@ -808,6 +847,7 @@ operation separately from electrical interpretation of the waveforms.
 | `interface/rta/profiles.py`, `backups.py`, `diagnostics.py` | Profiles and instrument checks/setup protection |
 | `interface/rta/comparison.py`, `reports.py`, `workbench.py` | Comparisons, PDFs and workflow coordination |
 | `interface/static/modules/workbench.js`, `i18n.js` | Workbench panels and presentation translations |
+| `interface/static/modules/workflow.js`, `workflow.css` | Three-step setup, visible validation, and responsive results |
 | `interface/static/modules/` | Browser modules for controls, models, timebase, charts, and results |
 | `interface/static/assets/circuit.svg` | Reference circuit diagram |
 | `interface/iniciar-windows.ps1` | Windows-to-WSL launcher |
@@ -855,7 +895,7 @@ Run it on a Windows account without an existing installed copy, using a
 new empty test directory:
 
 ```powershell
-.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.3.0-windows-x64-setup.exe --work dist\windows\smoke-test
+.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.4.0-windows-x64-setup.exe --work dist\windows\smoke-test
 ```
 
 Instrument references:

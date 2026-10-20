@@ -41,6 +41,17 @@ class ResultStore:
                 continue
             try:
                 meta = read_json(self.inside(path, folder.name + "/metadados.json"))
+                if not isinstance(meta, dict) or not all(key in meta for key in ("origem", "instante_utc", "pontos", "dt_s", "t0_s")):
+                    continue
+                if not isinstance(meta["pontos"], int) or not 2 <= meta["pontos"] <= 1000000:
+                    continue
+                if any(not isinstance(meta[k], (int, float)) or not math.isfinite(meta[k]) for k in ("dt_s", "t0_s")) or meta["dt_s"] <= 0:
+                    continue
+                if meta.get("tipo_medicao") == "sinais":
+                    if not isinstance(meta.get("canais"), list) or not 1 <= len(meta["canais"]) <= 4:
+                        continue
+                    if any(not isinstance(c, dict) or c.get("numero") not in (1,2,3,4) for c in meta["canais"]):
+                        continue
                 events = []
                 with self.inside(path, folder.name + ("/medidas.csv" if meta.get("tipo_medicao") == "sinais" else "/eventos.csv")).open(newline="") as file:
                     events = []
@@ -54,7 +65,7 @@ class ResultStore:
                 pngs = [file.name for file in sorted((folder / "graficos").glob("*.png"))
                         if file.is_file() and file.resolve().is_relative_to(path)]
                 captures.append(dict(id=folder.name, metadata=meta, events=events, images=pngs))
-            except (OSError, ValueError, KeyError, Problem):
+            except (OSError, ValueError, TypeError, AttributeError, KeyError, Problem):
                 continue
         if not captures:
             raise Problem("Este ensaio ainda não possui capturas completas.", 404)
@@ -66,6 +77,10 @@ class ResultStore:
             provenance=read_json(self.inside(path,"proveniencia.json"))
         except (OSError,ValueError,Problem):
             provenance=None
+        if not isinstance(execution, dict):
+            execution = {}
+        if not isinstance(provenance, dict):
+            provenance = None
         return dict(id=run, captures=captures, execution=execution,provenance=provenance)
 
     def history(self):
@@ -82,7 +97,7 @@ class ResultStore:
                                     valid=sum(c["metadata"].get("eventos_validos", 0) for c in captures),
                                     measurement=first.get("tipo_medicao", "transientes"),
                                     complete=detail["execution"].get("concluido") is True))
-            except (OSError, ValueError, KeyError, Problem):
+            except (OSError, ValueError, TypeError, AttributeError, KeyError, Problem):
                 continue
         return sorted(history, key=lambda row: row["date"], reverse=True)
 

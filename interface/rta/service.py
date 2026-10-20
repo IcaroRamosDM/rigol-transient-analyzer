@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 
-from .common import ROOT, ACTIVE, PHASES, Problem, address, settings, now, read_json
+from .common import ROOT, ACTIVE, DEFAULTS, PHASES, Problem, address, settings, now, read_json
 from .instrument import scope_query, read_scope, verify_profile
 from .storage import ResultStore
 from .commands import build_command
@@ -239,6 +239,8 @@ class App(Workbench):
                         if clipped:
                             self.job["failure"] = dict(kind="clipping",
                                                       channel=int(clipped[1]), point=int(clipped[2]))
+                        elif error == "Memoria sem amostras; faca uma captura nova antes de ler.":
+                            self.job["failure"] = dict(kind="empty_memory")
                         elif error in {"Nenhum disparo concluido dentro do prazo.",
                                        "Rigol nao iniciou a aquisicao."}:
                             self.job["failure"] = dict(kind="trigger_timeout")
@@ -290,9 +292,14 @@ class App(Workbench):
 
     def scope_action(self, payload):
         action = payload.get("action")
-        if action not in {"read", "apply", "run", "stop"}:
+        if action not in {"read", "apply", "run", "stop", "autoset"}:
             raise Problem("Ação do Rigol desconhecida.")
-        cfg = settings(payload.get("settings", {}), self.connection.get("model"))
+        supplied = payload.get("settings", {})
+        if action != "apply":
+            if not isinstance(supplied, dict):
+                raise Problem("Configuração desconhecida.")
+            supplied = {key: supplied[key] for key in ("ip", "port", "model") if key in supplied}
+        cfg = settings(supplied, self.connection.get("model"))
         with self.lock:
             if self.closed or self.scope["busy"] or self.connection.get("checking") or (
                     self.job and self.job["state"] in ACTIVE):
@@ -314,7 +321,7 @@ class App(Workbench):
                 if result.returncode:
                     raise Problem((result.stderr or result.stdout).strip()[-1000:] or
                                   "O Rigol não confirmou a configuração.", 502)
-            state = read_scope(cfg["ip"], cfg["port"], action if action in {"run", "stop"} else "read", cfg["model"])
+            state = read_scope(cfg["ip"], cfg["port"], action if action in {"run", "stop", "autoset"} else "read", cfg["model"], timeout=20 if action=="autoset" else 10)
             if action == "apply":
                 verify_profile(state, cfg)
                 state = read_scope(cfg["ip"], cfg["port"], "run", cfg["model"])

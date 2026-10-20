@@ -17,9 +17,10 @@ def evaluate(state, measurements, cfg):
         n=channel["channel"]
         if not channel["display"]:
             add("hidden_channel","error",channel=n)
-        if channel["probe"]!=probe:
+        if cfg.get("configuration", "guided") == "guided" and channel["probe"]!=probe:
             add("probe_setting","error",channel=n)
-        if channel["coupling"]!=wanted["coupling"]:
+        if (cfg.get("measurement", "transients") == "transients" and channel["coupling"] != "DC") or (
+                cfg.get("configuration", "guided") == "guided" and channel["coupling"] != wanted["coupling"]):
             add("coupling","error",channel=n)
         lo, hi = measurements.get("min"+str(n)),measurements.get("max"+str(n))
         if lo is None or hi is None:

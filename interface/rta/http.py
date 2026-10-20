@@ -80,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
                     shutil.copyfileobj(stream, self.wfile, 65536)
             elif url.path in ("/", "/app.js", "/style.css", "/modules/core.js", "/modules/jobs.js", "/modules/measurement.js",
                               "/modules/chart.js", "/modules/results.js", "/modules/rigol.js", "/modules/timebase.js", "/modules/models.js",
-                              "/assets/circuit.svg", "/assets/circuit-en.svg", "/rigol.css", "/modules/workbench.js", "/modules/i18n.js", "/workbench.css"):
+                              "/assets/circuit.svg", "/assets/circuit-en.svg", "/rigol.css", "/modules/workbench.js", "/modules/i18n.js", "/workbench.css", "/workflow.css", "/modules/workflow.js"):
                 file = app.root / "interface/static" / ("index.html" if url.path == "/" else url.path[1:])
                 data = file.read_bytes()
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[file.suffix]

@@ -5,7 +5,7 @@ import { setTimeSeconds, updateTimeControls } from "./timebase.js";
 export const $ = id => document.getElementById(id);
 export const inputs = Array.from(document.querySelectorAll("[data-key]"));
 export const S = {scope: {busy:false, snapshot:null, error:""}, online: true, token: "", defaults: {}, connection: {}, job: null, busy: false, ready: false,
-  closed: false, run: null, capture: null, event: -1, data: null, range: null,
+  instance: "", view:"measure", closed: false, run: null, capture: null, event: -1, data: null, range: null,
   relative: false, loadedJob: "", waveformRequest: null, drag: null, pointer: null};
 export const origins = {
   CAPTURA_NOVA: [t("Captura real"), "real"],
@@ -13,7 +13,7 @@ export const origins = {
   SIMULACAO: [t("Demonstração"), "demo"],
   ARQUIVO: [t("Reanálise de arquivo"), "file"]
 };
-export const titles = {compare:[t("Comparar ensaios"),t("Comparação de registros preservados.")],measure: [t("Bancada de medições"), t("Sinais e resposta da alimentação no mesmo lugar.")],
+export const titles = {results:[t("Resultados da medição"),t("Capturas salvas, métricas e exportação.")],compare:[t("Comparar ensaios"),t("Comparação de registros preservados.")],measure: [t("Nova medição"), t("Escolha a medição, confira os ajustes e capture.")],
   prepare: [t("Preparar a bancada"), t("Conexões e ajustes da montagem de referência.")],
   rigol: [t("Configurar o Rigol"), t("Ajustes da bancada e controle da visualização no instrumento.")],
   history: [t("Histórico de ensaios"), t("Volte aos resultados, com ou sem o instrumento conectado.")]};
@@ -32,7 +32,7 @@ export function say(message, kind="") {
   $("notice").hidden = !message;
   $("liveRegion").textContent = t(message);
 }
-export async function api(path, data, signal) {
+export async function api(path, data, signal, retry=true) {
   const request=new AbortController();
   const abort=()=>request.abort();
   if (signal?.aborted) request.abort();
@@ -51,7 +51,14 @@ export async function api(path, data, signal) {
   } finally {
     clearTimeout(timer); signal?.removeEventListener("abort",abort);
   }
-  if(!response.ok) throw new Error(result.error||t("A operação não foi concluída."));
+  if(response.status===403 && data!==undefined && retry && result.error==="Reabra a interface para atualizar a sessão."){
+    const session=await api("/api/bootstrap");
+    if(session.app==="Rigol Transient Analyzer" && typeof session.token==="string"){
+      S.token=session.token;S.instance=session.instance;
+      return api(path,data,signal,false);
+    }
+  }
+  if(!response.ok) throw new Error(t(result.error||"A operação não foi concluída."));
   return result;
 }
 export function config() {
@@ -60,13 +67,20 @@ export function config() {
     const key = input.dataset.key;
     value[key] = input.type === "checkbox" ? input.checked :
       ["ip", "bandwidth", "model", "measurement", "configuration"].includes(key) ? input.value.trim() :
-      Number(input.value) / Number(input.dataset.factor || 1);
+      input.value.trim()==="" ? NaN : Number(input.value) / Number(input.dataset.factor || 1);
   }
   return S.measurement ? {...value, channels:structuredClone(S.measurement.channels), trigger:{...S.measurement.trigger}} : value;
 }
 export function fillConfig(defaults, restoreSaved=true) {
   let saved = {};
   try { if(restoreSaved) saved = JSON.parse(localStorage.getItem("rta.settings.v1") || "{}"); } catch (_) {}
+  if(!saved||typeof saved!=="object"||Array.isArray(saved))saved={};
+  if(saved.channels!==undefined&&saved.channels!==null&&!Array.isArray(saved.channels))delete saved.channels;
+  if(restoreSaved && !Object.keys(saved).length){
+    saved={measurement:"signals",configuration:"preserve",
+      channels:[{number:1,probe:10,scale:1,center:0,coupling:"DC",bandwidth:"20M"}],
+      trigger:{source:1,level:0,slope:"POS"}};
+  }
   let savedTime=defaults.time_div;
   for (const input of inputs) {
     const key = input.dataset.key;
@@ -75,7 +89,7 @@ export function fillConfig(defaults, restoreSaved=true) {
     if (input.type === "checkbox") input.checked = typeof value === "boolean" ? value : defaults[key];
     else input.value = ["ip", "bandwidth", "model", "measurement", "configuration"].includes(key) ? value :
       Number(value) * Number(input.dataset.factor || 1);
-    if (key === "model" && !input.value) input.value = defaults.model;
+    if (["model","measurement","configuration"].includes(key) && !input.value) input.value=defaults[key];
   }
   updateModelControls(S.connection, {...config(), time_div:savedTime});
   setTimeSeconds(savedTime,false);
@@ -96,11 +110,11 @@ export function controls() {
   updateTimeControls(busy);
   $("connect").disabled = busy;
   $("jobReview").disabled = busy;
+  if($("jobRetry"))$("jobRetry").disabled=busy||!currentConnection();
+  if($("jobFresh"))$("jobFresh").disabled=busy||!currentConnection();
   $("demo").disabled = busy;
   $("emptyDemo").disabled = busy;
   $("start").disabled = busy || !currentConnection();
-  if($("quickStart"))$("quickStart").disabled=busy||!currentConnection();
-  if($("quickDemo"))$("quickDemo").disabled=busy;
   $("cancel").hidden = !active();
   $("cancel").disabled = !active() || S.job.state === "cancelling";
   $("shutdown").disabled = busy;

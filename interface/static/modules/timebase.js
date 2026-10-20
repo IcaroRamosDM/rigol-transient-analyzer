@@ -21,6 +21,7 @@ export function adjacentTime(seconds,direction) {
 export function timeStep(seconds) { return band(floorPs(seconds*PS)).step_ps/PS; }
 function autoUnit(seconds) { return seconds>=1?"s":seconds>=1e-3?"ms":seconds>=1e-6?"us":"ns"; }
 export function formatTime(seconds,unit=autoUnit(seconds)) {
+  if(!Number.isFinite(seconds))return "—";
   return (seconds*unitFactors[unit]).toLocaleString(locale,{maximumSignificantDigits:12})+" "+labels[unit];
 }
 const element=id=>document.getElementById(id);

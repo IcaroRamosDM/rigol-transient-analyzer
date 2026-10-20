@@ -42,11 +42,13 @@ export async function openRun(id) {
     const option = document.createElement("option");
     option.value = i; option.textContent = t("Captura ") + (i + 1); $("captureSelect").append(option);
   });
-  document.dispatchEvent(new CustomEvent("rta:view", {detail:"measure"}));
+  document.dispatchEvent(new CustomEvent("rta:view", {detail:"results"}));
   $("emptyPanel").hidden = true; $("resultPanel").hidden = false;
   await selectCapture(0);
 }
 export async function selectCapture(index) {
+  if(!S.run?.captures[index])return;
+  $("captureSelect").value=String(index);
   S.capture = S.run.captures[index];
   S.range = null; S.relative = false; S.data = null;
   canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
@@ -57,7 +59,7 @@ export async function selectCapture(index) {
   $("originBadge").className = "badge " + origin[1];
   $("originBadge").textContent = origin[0];
   $("resultDate").textContent = date(meta.instante_utc);
-  $("resultTitle").textContent = t("Captura ") + (index + 1) + t(" de ") + S.run.captures.length;
+  $("resultTitle").textContent = t(meta.tipo_medicao==="sinais"?"Sinais":"Transientes")+" · "+t("Captura ") + (index + 1) + t(" de ") + S.run.captures.length;
   const original=S.run.provenance?.root_metadata||S.run.provenance?.metadata;
   $("resultIdentity").textContent = t(original?.instrumento||meta.instrumento);
   $("sourceNotice").className = "source-notice" + (meta.origem === "SIMULACAO" ? " demo-notice" : "");
@@ -77,12 +79,29 @@ export async function selectCapture(index) {
   $("chartContainer").style.height=signal?Math.max(300,meta.canais.length*180)+"px":"";
   $("signalMetrics").replaceChildren();
   if(signal){
+    function metric(container,label,value){
+      const item=document.createElement("div"),dt=document.createElement("dt"),dd=document.createElement("dd");
+      dt.textContent=t(label);dd.textContent=value;item.append(dt,dd);container.append(item);
+    }
+    function engineering(value,type){
+      if(value===null||!Number.isFinite(value))return "—";
+      const a=Math.abs(value);
+      if(type==="frequency")return a>=.9995e6?units(value,1e-6,"MHz",3):a>=.9995e3?units(value,1e-3,"kHz",3):units(value,1,"Hz",3);
+      if(type==="period")return a>=.9995?units(value,1,"s",3):a>=.9995e-3?units(value,1e3,"ms",3):a>=.9995e-6?units(value,1e6,"µs",3):units(value,1e9,"ns",3);
+      return a>0&&a<1?units(value,1e3,"mV",3):units(value,1,"V",4);
+    }
     for(const ch of meta.canais){
-      const row=document.createElement("tr");
-      for(const value of ["CH"+ch.numero,units(ch.minimo_v,1,"V",4),units(ch.maximo_v,1,"V",4),units(ch.media_v,1,"V",4),units(ch.rms_v,1,"V",4),units(ch.vpp_v,1,"V",4),
-        units(ch.frequencia_hz,1,"Hz",2),units(ch.periodo_s,1e6,"µs",3),units(ch.duty,100,"%",2)]){
-        const cell=document.createElement("td");cell.textContent=value;row.append(cell);
-      }$("signalMetrics").append(row);
+      const card=document.createElement("article");card.className="signal-metric-card";
+      const heading=document.createElement("h4");heading.textContent="CH"+ch.numero;card.append(heading);
+      const primary=document.createElement("dl");primary.className="signal-primary";
+      for(const [label,value] of [["Pico a pico",engineering(ch.vpp_v)],["Frequência",engineering(ch.frequencia_hz,"frequency")],
+        ["RMS total",engineering(ch.rms_v)],["Ciclo ativo",units(ch.duty,100,"%",2)]])metric(primary,label,value);
+      const secondary=document.createElement("dl");secondary.className="signal-secondary";
+      for(const [label,value] of [["Mínimo",engineering(ch.minimo_v)],["Máximo",engineering(ch.maximo_v)],
+        ["Média",engineering(ch.media_v)],["Período",engineering(ch.periodo_s,"period")]])metric(secondary,label,value);
+      card.append(primary,secondary);
+      if(ch.frequencia_hz===null){const note=document.createElement("p");note.className="helper";note.textContent=t("Sem ciclos estáveis suficientes para estimar frequência e ciclo ativo. Amplie o tempo capturado ou confira o sinal.");card.append(note);}
+      $("signalMetrics").append(card);
     }
   }else{
     $("meanV").textContent=units(meta.media_tensao_v,1,"V",3);

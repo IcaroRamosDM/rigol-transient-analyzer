@@ -273,7 +273,21 @@ int ct_configurar(CtRede *r, const CtConfig *cfg, char *erro)
     snprintf(comando,sizeof comando,":CHAN%u:COUP?",c->numero);
     if(ct_consultar(r,comando,resposta,sizeof resposta,erro)<0) return -1;
     if(strcmp(resposta,c->acoplamento)) return ct_falha(erro,"Acoplamento nao confirmado.");
+    snprintf(comando,sizeof comando,":CHAN%u:BWL?",c->numero);
+    if(ct_consultar(r,comando,resposta,sizeof resposta,erro)<0) return -1;
+    if(strcmp(resposta,c->banda)) return ct_falha(erro,"Limite de banda nao confirmado no CH%u.",c->numero);
+    snprintf(comando,sizeof comando,":CHAN%u:DISP?",c->numero);
+    if(ct_consultar(r,comando,resposta,sizeof resposta,erro)<0) return -1;
+    if(strcmp(resposta,"1") && strcmp(resposta,"ON")) return ct_falha(erro,"Canal CH%u nao habilitado.",c->numero);
   }
+  unsigned fonte=cfg->n_canais?cfg->disparo_canal:cfg->ch_i;
+  snprintf(comando,sizeof comando,"CHAN%u",fonte);
+  if(ct_consultar(r,":TRIG:EDGE:SOUR?",resposta,sizeof resposta,erro)<0) return -1;
+  if(strcmp(resposta,comando)) return ct_falha(erro,"Fonte de disparo nao confirmada.");
+  if(ct_consultar(r,":TRIG:EDGE:SLOP?",resposta,sizeof resposta,erro)<0) return -1;
+  if(strcmp(resposta,cfg->n_canais?cfg->disparo_borda:"POS")) return ct_falha(erro,"Borda de disparo nao confirmada.");
+  if(confirmar_numero(r,":TRIG:EDGE:LEV?",cfg->n_canais?cfg->disparo_v:
+       (cfg->baixo_a+cfg->alto_a)*.5*cfg->resistor,erro)<0) return -1;
   if (confirmar_numero(r, ":TIM:MAIN:SCAL?", cfg->tempo_div, erro) < 0 ||
       confirmar_numero(r, ":ACQ:MDEP?", (double)cfg->pontos, erro) < 0) return -1;
   return 0;
@@ -340,6 +354,7 @@ static int bloco(CtRede *r, unsigned char *dados, size_t esperado, char *erro)
     if (digitos[k] < '0' || digitos[k] > '9') return ct_falha(erro, "Comprimento binario invalido.");
     n = n * 10 + (size_t)(digitos[k]-'0');
   }
+  if (!n) return ct_falha(erro,"Memoria sem amostras; faca uma captura nova antes de ler.");
   if (n != esperado) return ct_falha(erro, "Bloco anuncia %zu bytes; esperado %zu.", n, esperado);
   if (receber(r, dados, n, prazo, erro) < 0 ||
       receber(r, &fim, 1, prazo, erro) < 0) return -1;

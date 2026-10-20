@@ -1,6 +1,10 @@
 import { t } from "./i18n.js";
 import { $, S, api, say, number, units } from "./core.js";
 const event = () => S.capture && S.capture.events[S.event];
+export function timeUnits(span){
+ return span>=1?{factor:1,unit:"s",digits:3}:span>=1e-3?{factor:1e3,unit:"ms",digits:3}:
+  span>=1e-6?{factor:1e6,unit:"µs",digits:3}:{factor:1e9,unit:"ns",digits:3};
+}
 function fitRange(start, end) {
   const m = S.capture.metadata, first = m.t0_s, last = first + (m.pontos - 1) * m.dt_s;
   const width = Math.min(last - first, Math.max(end - start, m.dt_s * 5));
@@ -20,9 +24,9 @@ export async function loadWave() {
     S.data = data; S.pointer = null;
     $("displayCount").textContent = number(data.points.length, 0) + t(" pontos exibidos · ") +
       number(data.selected, 0) + t(" amostras na janela");
-    const factor = S.relative ? 1e6 : 1000, base = S.relative && event() ? event().tempo_s : 0;
-    $("waveRange").textContent = "t = " + number((data.start-base)*factor, 2) + t(" a ") +
-      number((data.end-base)*factor, 2) + (S.relative ? t(" µs após a borda") : t(" ms em relação ao disparo"));
+    const scale=timeUnits(data.end-data.start),base=S.relative&&event()?event().tempo_s:0;
+    $("waveRange").textContent="t = "+number((data.start-base)*scale.factor,3)+t(" a ")+
+      number((data.end-base)*scale.factor,3)+" "+scale.unit+" · "+t(S.relative?"após a borda":"em relação ao disparo");
     draw();
   } catch (error) { if (error.name !== "AbortError") say(error.message, "error"); }
   finally { if (S.waveformRequest === request) $("chartLoading").hidden = true; }
@@ -67,7 +71,7 @@ export function draw() {
   c.clearRect(0,0,g.width,g.height); c.fillStyle = "#fff"; c.fillRect(0,0,g.width,g.height);
   const data = S.data, e = event(), range = S.range || [data.record_start, data.record_end];
   const x = t => g.left + (t-range[0])/(range[1]-range[0])*(g.right-g.left);
-  const base = S.relative && e ? e.tempo_s : 0, factor = S.relative ? 1e6 : 1000;
+  const base = S.relative && e ? e.tempo_s : 0, timeScale=timeUnits(range[1]-range[0]),factor=timeScale.factor;
   c.font = "10px Segoe UI, sans-serif";
   const panels = [{column:1,top:g.top,bottom:g.middle-24,color:"#c4860a",label:t("TENSÃO (V)"),factor:1},
     {column:2,top:g.middle+30,bottom:g.bottom,color:"#088895",label:t("CORRENTE (mA)"),factor:1000}];
@@ -81,15 +85,17 @@ export function draw() {
   for (const panel of panels) {
     let lo = Infinity, hi = -Infinity;
     for (const point of data.points) { const v = point[panel.column]*panel.factor; lo=Math.min(lo,v); hi=Math.max(hi,v); }
+    const amplitude=Math.max(Math.abs(lo),Math.abs(hi));
+    const vertical=panel.factor===1&&amplitude>0&&amplitude<1?{factor:1000,unit:"mV"}:{factor:1,unit:panel.factor===1000?"mA":"V"};
     const pad = Math.max(hi-lo, Math.abs(hi)*.02, signal?1e-6:panel.column===1?.02:2)*.1;
     lo-=pad; hi+=pad;
     const y = value => panel.bottom-(value-lo)/(hi-lo)*(panel.bottom-panel.top);
     c.fillStyle=panel.color; c.textAlign="left"; c.font="600 9px Segoe UI, sans-serif";
-    c.fillText(panel.label,g.left,panel.top-13); c.font="10px Segoe UI, sans-serif";
+    c.fillText(panel.label.replace("(V)","("+vertical.unit+")"),g.left,panel.top-13); c.font="10px Segoe UI, sans-serif";
     for(let k=0;k<=4;k++){
       const v=lo+(hi-lo)*k/4, yy=y(v);
       c.beginPath();c.strokeStyle="#edf1f5";c.lineWidth=1;c.moveTo(g.left,yy);c.lineTo(g.right,yy);c.stroke();
-      c.fillStyle="#82929e";c.textAlign="right";c.fillText(number(v,signal?3:panel.column===1?2:0),g.left-9,yy+3);
+      c.fillStyle="#82929e";c.textAlign="right";c.fillText(number(v*vertical.factor,2),g.left-9,yy+3);
     }
     for(let k=0;k<=5;k++){
       const t=range[0]+(range[1]-range[0])*k/5, xx=x(t);
@@ -114,7 +120,7 @@ export function draw() {
     c.restore();
   }
   c.fillStyle="#718792";c.textAlign="center";c.font="9px Segoe UI, sans-serif";
-  c.fillText(S.relative?t("Tempo após a borda (µs)"):t("Tempo em relação ao disparo (ms)"),(g.left+g.right)/2,g.height-4);
+  c.fillText(t(S.relative?"Tempo após a borda":"Tempo em relação ao disparo")+" ("+timeScale.unit+")",(g.left+g.right)/2,g.height-4);
 }
 function pointer(eventValue) {
   const rect = canvas.getBoundingClientRect(), g = geometry();
@@ -128,13 +134,14 @@ canvas.addEventListener("pointermove", e => {
   if(!S.data)return;
   S.pointer=pointer(e);if(S.drag)S.drag.end=S.pointer;
   const range=S.range||[S.data.record_start,S.data.record_end],g=geometry();
-  const t=range[0]+(S.pointer-g.left)/(g.right-g.left)*(range[1]-range[0]);
+  const cursorTime=range[0]+(S.pointer-g.left)/(g.right-g.left)*(range[1]-range[0]);
   const points=S.data.points;let lo=0,hi=points.length-1;
-  while(lo<hi){const mid=Math.floor((lo+hi)/2);if(points[mid][0]<t)lo=mid+1;else hi=mid;}
-  const point=lo&&Math.abs(points[lo-1][0]-t)<Math.abs(points[lo][0]-t)?points[lo-1]:points[lo];
+  while(lo<hi){const mid=Math.floor((lo+hi)/2);if(points[mid][0]<cursorTime)lo=mid+1;else hi=mid;}
+  const point=lo&&Math.abs(points[lo-1][0]-cursorTime)<Math.abs(points[lo][0]-cursorTime)?points[lo-1]:points[lo];
   const base=S.relative&&event()?event().tempo_s:0;
   const signal=S.capture.metadata.tipo_medicao==="sinais";
-  $("cursorReadout").textContent="t  "+units(point[0]-base,S.relative?1e6:1000,S.relative?"µs":"ms",3)+
+  const timeScale=timeUnits(range[1]-range[0]);
+  $("cursorReadout").textContent="t  "+units(point[0]-base,timeScale.factor,timeScale.unit,3)+
     (signal?S.capture.metadata.canais.map((ch,i)=>"\nCH"+ch.numero+"  "+units(point[i+1],1,"V",4)).join(""):
       "\nV  "+units(point[1],1,"V",4)+"\nI  "+units(point[2],1000,"mA",2))+"\n"+t("Amostra exibida");
   $("cursorReadout").hidden=false;draw();

@@ -5,17 +5,23 @@ import { openRun, refreshHistory } from "./results.js";
 export function renderJob() {
   const job = S.job;
   const failed = job?.state === "error";
-  $("progressPanel").hidden = !job || (!active() && !failed && S.run && S.run.id !== job.id);
+  $("progressPanel").hidden = !job || (!active() && !failed);
+  if($("jobRetry"))$("jobRetry").hidden=!failed||job.mode!=="real"||!currentConnection();
   $("progressPanel").classList.toggle("failed", failed);
   const realFailure = failed && job.mode === "real";
   const disconnected = realFailure && !currentConnection();
   const clipping = job?.failure?.kind === "clipping";
   const triggerTimeout = job?.failure?.kind === "trigger_timeout";
+  const emptyMemory=job?.failure?.kind==="empty_memory";
+  if($("jobFresh"))$("jobFresh").hidden=!emptyMemory||!currentConnection();
+  if(emptyMemory&&$("jobRetry"))$("jobRetry").hidden=true;
   $("jobRecovery").hidden = !failed;
   $("jobReview").hidden = !realFailure;
-  $("jobReview").textContent = t(disconnected ? "Reconectar ao Rigol" : "Conferir ajustes do Rigol");
+  $("jobReview").textContent = t(disconnected ? "Conferir conexão" : "Conferir ajustes do Rigol");
   $("jobRecovery").textContent = disconnected ?
     t("Não foi possível confirmar a comunicação. Confira alimentação, cabo Ethernet e IP e clique em Reconectar ao Rigol.") :
+    realFailure && emptyMemory ?
+      t("O Rigol não tem amostras disponíveis neste registro. Clique em Fazer captura nova para adquirir usando os ajustes atuais do instrumento.") :
     realFailure && triggerTimeout ?
       t("O disparo não foi concluído. Confira o sinal, o canal e o nível de disparo. Depois, clique em Iniciar medição real para tentar novamente.") :
     realFailure && clipping ?
@@ -24,7 +30,7 @@ export function renderJob() {
       t("A captura falhou, mas o Rigol continua respondendo. Confira os detalhes e os ajustes antes de iniciar outra medição.") :
       t("A operação falhou. Consulte os detalhes antes de tentar novamente.");
   if (!job) return;
-  $("jobMessage").textContent = t(job.message);
+  $("jobMessage").textContent = emptyMemory?t("A memória atual está vazia."):t(job.message);
   $("jobCapture").textContent = failed ?
     t("Esta captura foi interrompida.") + (S.run && S.run.id !== job.id ?
       " " + t("O gráfico exibido pertence a um ensaio anterior.") : "") : job.capture ?
@@ -53,6 +59,10 @@ export async function poll() {
       controls(); say(error.message, "error");
       return;
     }
+    if(S.instance && status.instance && status.instance!==S.instance){
+      const session=await api("/api/bootstrap");
+      S.token=session.token;S.instance=session.instance;S.loadedJob="";
+    }
     S.online = true;
     S.closed = status.closed;
     S.connection = status.connection;
@@ -60,13 +70,14 @@ export async function poll() {
     S.job = status.job;
     controls(); renderJob();
     if (S.job && !active() && S.loadedJob !== S.job.id) {
-      S.loadedJob = S.job.id;
       if (["done", "attention"].includes(S.job.state)) {
         await openRun(S.job.id);
+        S.loadedJob = S.job.id;
         say(S.job.message + (S.job.mode === "demo" ? t(" · sinal sintético.") : S.job.mode==="reanalysis"?"":t(" · dados reais salvos.")),
           S.job.state === "attention" ? "attention" : "");
         await refreshHistory();
       } else {
+        S.loadedJob = S.job.id;
         say(S.job.message, S.job.state === "error" ? "error" : "attention");
         await refreshHistory();
       }

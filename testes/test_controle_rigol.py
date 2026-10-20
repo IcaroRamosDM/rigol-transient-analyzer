@@ -217,7 +217,7 @@ class RigolControls(harness.InterfaceHarness, unittest.TestCase):
 
     def test_scope_control_excludes_measurement_connect_and_shutdown(self):
         entered, release = threading.Event(), threading.Event()
-        def delayed(*_):
+        def delayed(*_, **__):
             entered.set()
             release.wait(3)
             return {"state":"STOP"}
@@ -252,7 +252,7 @@ class RigolControls(harness.InterfaceHarness, unittest.TestCase):
 
     def test_unknown_action_and_nonfinite_settings_never_touch_instrument(self):
         before = len(self.instrument.commands)
-        for action, updates in [(":RUN;:STOP", {}), ("read", {"points":math.nan}),
+        for action, updates in [(":RUN;:STOP", {}), ("apply", {"points":math.nan}),
                                 ("apply", {"scale_v":1e99}), ("apply", {"timeout":31}), ("apply", {"time_div":206e-6})]:
             with self.subTest(action=action, updates=updates), self.assertRaises(HTTPError):
                 self.action(action, **updates)

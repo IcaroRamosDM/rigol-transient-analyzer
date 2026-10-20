@@ -100,7 +100,7 @@ def scope_query(ip, port, command="*IDN?", timeout=3):
 
 
 def read_scope(ip, port, action="read", model="auto", timeout=10):
-    if action not in {"read", "run", "stop"}:
+    if action not in {"read", "run", "stop", "autoset"}:
         raise Problem("Ação do Rigol desconhecida.")
     with Session(ip, port, timeout) as connection:
         identity = connection.identity(model)
@@ -108,6 +108,11 @@ def read_scope(ip, port, action="read", model="auto", timeout=10):
             connection.send(":TRIG:SWE AUTO;:RUN")
         elif action == "stop":
             connection.send(":STOP")
+        elif action == "autoset":
+            connection.send(":AUToset")
+            if connection.query("*OPC;*OPC?") != "1":
+                raise Problem("O Rigol não confirmou o ajuste automático.", 502)
+            connection.send(":ACQ:MDEP 1000000;:TRIG:SWE AUTO;:RUN")
         state = connection.query(":TRIG:STAT?")
         if action in {"run", "stop"}:
             deadline = time.monotonic() + 1

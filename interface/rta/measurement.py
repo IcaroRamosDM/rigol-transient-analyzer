@@ -9,6 +9,8 @@ def finite(value):
 
 def validate_measurement(cfg, profile):
     channels = cfg["channels"]
+    if channels is None and cfg["measurement"] == "signals":
+        channels = [dict(number=1, probe=1, scale=1, center=0, coupling="DC", bandwidth="20M")]
     if channels is None:
         channels = [dict(number=cfg["voltage_channel"], probe=cfg["probe_v"], scale=cfg["scale_v"],
                          center=cfg["nominal"], coupling="DC", bandwidth=cfg["bandwidth"]),

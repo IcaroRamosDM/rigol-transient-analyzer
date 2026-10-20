@@ -1,3 +1,4 @@
+import { validateForm } from "./workflow.js";
 import { t } from "./i18n.js";
 import { formatTime } from "./timebase.js";
 import { $, S, api, config, controls, currentConnection, saveConfig, say, number, units, date, applyConfig } from "./core.js";
@@ -42,7 +43,7 @@ function renderScope() {
 }
 async function operate(action) {
   if (!currentConnection()) return say(t("Conecte o Rigol na aba Medição."), "attention");
-  if (action==="apply" && !$("settingsForm").reportValidity()) return;
+  if (action==="apply" && !validateForm()) return;
   S.busy=true; S.scope={...S.scope,busy:true}; controls(); say("");
   try {
     const cfg=config();
@@ -65,7 +66,8 @@ export function initRigol() {
     input.value=select.value; saveConfig(); controls();
   }));
   $("rigolPreset").addEventListener("click",()=>{
-    applyConfig({...S.defaults, measurement:"transients", configuration:"guided", channels:null,trigger:null});
+    const address=config();
+    applyConfig({...S.defaults,ip:address.ip,port:address.port,model:address.model,measurement:"transients",configuration:"guided",channels:null,trigger:null});
     say(t("Perfil de 5 V carregado no formulário. Clique Aplicar e visualizar para enviá-lo ao Rigol."));
   });
   $("scopeApply").addEventListener("click",()=>operate("apply"));
