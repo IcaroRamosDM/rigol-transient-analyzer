@@ -83,6 +83,7 @@ int ct_executar_sinais(CtRede *r,const CtConfig *cfg,const char *id,
     } else {
       progresso("aguardando_disparo",j,cfg->capturas);
       if(!cfg->existente) resultado=ct_nova(r,cfg,erro);
+      c.forcado=!cfg->existente && r->forcado;
       progresso("transferindo",j,cfg->capturas);
       char estado[64];
       if(!resultado) resultado=ct_consultar(r,":TRIG:STAT?",estado,sizeof estado,erro);

@@ -1,5 +1,5 @@
 import { t } from "./i18n.js";
-import { $, S, active, controls, api, say, currentConnection } from "./core.js";
+import { $, S, active, controls, api, say, currentConnection, config } from "./core.js";
 import { openRun, refreshHistory } from "./results.js";
 
 export function renderJob() {
@@ -13,6 +13,8 @@ export function renderJob() {
   const clipping = job?.failure?.kind === "clipping";
   const triggerTimeout = job?.failure?.kind === "trigger_timeout";
   const emptyMemory=job?.failure?.kind==="empty_memory";
+  if($("jobCurrent"))$("jobCurrent").hidden=!realFailure||emptyMemory||disconnected;
+  if($("jobAutoset"))$("jobAutoset").hidden=!realFailure||disconnected||config().measurement!=="signals";
   if($("jobFresh"))$("jobFresh").hidden=!emptyMemory||!currentConnection();
   if(emptyMemory&&$("jobRetry"))$("jobRetry").hidden=true;
   $("jobRecovery").hidden = !failed;

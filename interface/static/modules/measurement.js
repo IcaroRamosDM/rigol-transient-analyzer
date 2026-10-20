@@ -63,6 +63,7 @@ function render(){
  $("guidedControls").hidden=!guided;
  $("guidedControls").querySelectorAll("input,select,button").forEach(e=>e.disabled=busy||!guided||(e.id==="scopeApply"&&!currentConnection()));
  $("rigolPreset").hidden=true;
+ $("edgePolicy").hidden=!signal;$("requireEdge").disabled=busy||!signal||cfg.configuration==="memory";
  $("captures").readOnly=cfg.configuration==="memory";if(cfg.configuration==="memory")$("captures").value=1;
  $("readIntoForm").disabled=busy||!currentConnection();$("quickPreset").disabled=busy;
  $("scopeAutoset").hidden=!signal;$("autosetHelp").hidden=!signal;
@@ -133,12 +134,8 @@ function render(){
  $("scopePlan").textContent=channels.map(c=>"CH"+c.number+": "+finite(c.scale)+" V/div · "+finite(c.center)+" V · "+c.coupling).join(" | ");
  $("triggerFromThresholds").hidden=signal;
 }
-export async function readIntoForm(notify=true){
- if(!currentConnection())return;
- S.busy=true;controls();
- try{
-  const cfg=config(),address={ip:cfg.ip,port:cfg.port,model:cfg.model};
-  const state=await api("/api/scope",{action:"read",settings:address});S.scope.snapshot=state;
+function adoptScope(state,cfg,notify){
+ S.scope.snapshot=state;
   const wanted=cfg.measurement==="signals"?S.measurement.channels.map(c=>c.number):[cfg.voltage_channel,cfg.current_channel];
   const selected=state.channels.filter(c=>wanted.includes(c.channel));
   S.measurement.channels=selected.map(c=>({number:c.channel,probe:c.probe,scale:c.scale_v,center:-c.offset_v,coupling:c.coupling,bandwidth:c.bandwidth}));
@@ -146,11 +143,19 @@ export async function readIntoForm(notify=true){
   S.measurement.trigger={source:wanted.includes(source)?source:wanted[0],level:state.trigger_level,slope:state.trigger_slope};
   setTimeSeconds(state.time_div,false);if([1000,10000,100000,1000000].includes(state.memory_points))$("points").value=state.memory_points;
   const unsupported=selected.some(c=>![1,10].includes(c.probe)||!["AC","DC"].includes(c.coupling))||
-    (cfg.measurement==="transients"&&selected.some(c=>c.coupling!=="DC"));
+   (cfg.measurement==="transients"&&selected.some(c=>c.coupling!=="DC"));
   if(unsupported)$("configuration").value="preserve";
   signature="";syncLegacy();saveConfig();
   if(notify)say(t(unsupported?"Ajustes lidos. Mantenha os ajustes do Rigol; este fator de ponta ou acoplamento não pode ser enviado pelo formulário.":"Ajustes lidos. O formulário não enviou alterações ao Rigol."));
- }catch(e){say(e.message,"error");}finally{S.busy=false;controls();}
+}
+export async function readIntoForm(notify=true){
+ if(!currentConnection())return false;
+ S.busy=true;controls();
+ try{
+  const cfg=config(),address={ip:cfg.ip,port:cfg.port,model:cfg.model};
+  const state=await api("/api/scope",{action:"read",settings:address});
+  adoptScope(state,cfg,notify);return true;
+ }catch(e){say(e.message,"error");return false;}finally{S.busy=false;controls();}
 }
 export function initMeasurement(){
  document.addEventListener("rta:config",e=>load(e.detail));
@@ -192,13 +197,16 @@ export function initMeasurement(){
   if(ch&&config().configuration==="guided"){ch.center=Number($("nominal").value);signature="";render();saveConfig();}
  });
  $("readIntoForm").addEventListener("click",()=>readIntoForm());
- $("scopeAutoset").addEventListener("click",async()=>{
+ $("scopeAutoset").addEventListener("click",()=>autoset());
+}
+
+export async function autoset(){
   S.busy=true;controls();say(t("Ajustando a visualização no Rigol…"));
   try{
    const cfg=config(),state=await api("/api/scope",{action:"autoset",settings:{ip:cfg.ip,port:cfg.port,model:cfg.model}});
-   S.scope.snapshot=state;$("configuration").value="preserve";signature="";
-   await readIntoForm(false);saveConfig();
-   say(t("AUTO concluído. Confira as ondas no Rigol e os fatores das pontas; a próxima captura manterá estes ajustes."));
-  }catch(e){say(e.message,"error");}finally{S.busy=false;controls();}
- });
+   $("configuration").value="preserve";signature="";
+   adoptScope(state,{...cfg,configuration:"preserve"},false);saveConfig();
+   say(t("AUTO concluído. Confira as ondas no Rigol e os fatores das pontas; a próxima captura manterá estes ajustes."));return true;
+  }catch(e){say(e.message,"error");return false;}finally{S.busy=false;controls();}
+
 }

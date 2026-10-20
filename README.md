@@ -114,6 +114,14 @@ For **Signals**, every selected channel is displayed and exported in volts.
 Use DC coupling to include the DC component; AC coupling removes it in the
 instrument. AUTO is intended to frame observable signals; it does not validate
 the physical connection, probe attenuation or electrical interpretation.
+**Aguardar borda de disparo / Wait for a trigger edge** is unchecked by default in Signals.
+If no edge occurs, the app forces one trigger after a short wait and reads a fresh
+record, including for a constant DC input. The result and `disparo_forcado` metadata
+identify this condition; zero time then describes a forced trigger, not a signal
+edge. Check the option when an actual trigger edge is required. Transients always
+waits for the configured edge and never uses this fallback. The CLI equivalent
+for Signals is `--sem-exigir-borda`; without that flag, CLI capture remains strict.
+
 The app can preserve instrument settings with probe factors/couplings outside
 the guided form's supported 1x/10x and AC/DC options.
 
@@ -127,7 +135,12 @@ level for the resistor channel. The 5 V preset is specific to the reference
 bench; other supplies and loads require suitable scales and analysis criteria.
 
 Capture errors keep the previous saved results intact. If the same instrument
-still responds, **Retry** remains available. Use **Review Rigol settings** to
+still responds, **Retry** remains available. **Capture using current Rigol settings**
+reads the instrument settings and starts a new capture without resending the
+form hardware settings; a failed read does not start a capture. In Signals,
+**Fit and capture (AUTO)** runs the instrument AUTO function, adopts its readback
+and retries with those settings. Check physical probe attenuation before using it.
+Use **Review Rigol settings** to
 return directly to step 2, or **Review connection** to return to step 1.
 A stale browser session recovers its local token after an application restart.
 A malformed local result is excluded from history without hiding other results.
@@ -281,7 +294,7 @@ provided with the release. To calculate a downloaded installer's checksum
 in PowerShell, replace the filename with the version you downloaded:
 
 ```powershell
-Get-FileHash .\RigolTransientAnalyzer-0.4.0-windows-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\RigolTransientAnalyzer-0.4.1-windows-x64-setup.exe -Algorithm SHA256
 ```
 
 Compare the value with the release checksum file. Physical model-validation
@@ -345,20 +358,21 @@ executable and starts the interface.
 
 Use **Idioma / Language** to switch between Portuguese and English.
 The choice is saved in this browser. Switching reloads the page and is
-disabled during active operations. The interface has five work areas:
+disabled during active operations. The interface has six work areas:
 
 1. **Medição (measurement):** choose Signals or Transients, connect, configure
-   channels/timebase/trigger or preserve the instrument setup, capture, inspect
-   the chart and metrics, and export. Start buttons are available at the top
-   and bottom of the setup panel.
-2. **Rigol (instrument control):** manage named profiles and full setup backups,
+   channels/timebase/trigger or preserve the instrument setup, then capture
+   from step 3.
+2. **Resultados (results):** inspect the saved chart and metrics and export.
+   This area displays completed records without continuous updates.
+3. **Rigol (instrument control):** manage named profiles and full setup backups,
    read confirmed settings, resume continuous visualization or freeze the scope.
    Measurement adjustments are on the Measurement tab.
-3. **Preparação (setup):** consult the reference transient-load circuit,
+4. **Preparação (setup):** consult the reference transient-load circuit,
    probe connections, supply settings and generator settings.
-4. **Histórico (history):** open saved Signals and Transients runs without an
+5. **Histórico (history):** open saved Signals and Transients runs without an
    instrument and download their measurements and exports.
-5. **Comparar (compare):** overlay two to four Transients records aligned at a
+6. **Comparar (compare):** overlay two to four Transients records aligned at a
    selected load transition and compare their event metrics.
 
 ### Configure the scope from the interface
@@ -633,7 +647,7 @@ The program applies this acquisition profile:
 | Trigger | CH2 rising edge at 0.1 V |
 | Trigger/network timeout | 5 seconds |
 
-The program confirms acquisition has started, requests a single trigger,
+For Transients, the program confirms acquisition has started, requests a single trigger,
 waits for completion, and downloads both channels while the record is
 frozen. Each repetition requests another fresh acquisition. The scope
 remains in **STOP** after the run. The supply and generator remain
@@ -895,7 +909,7 @@ Run it on a Windows account without an existing installed copy, using a
 new empty test directory:
 
 ```powershell
-.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.4.0-windows-x64-setup.exe --work dist\windows\smoke-test
+.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.4.1-windows-x64-setup.exe --work dist\windows\smoke-test
 ```
 
 Instrument references:

@@ -630,7 +630,16 @@ export const english={
   "Usa o AUTO do instrumento, limita a memória a 1 milhão de pontos e lê os ajustes. Confira os fatores das pontas físicas.": "Uses the instrument AUTO function, limits memory to 1 million points and reads settings. Check the physical probe factors.",
   "O Rigol não confirmou o ajuste automático.": "The Rigol did not confirm automatic setup.",
   "Ajustando a visualização no Rigol…": "Adjusting the Rigol display…",
-  "AUTO concluído. Confira as ondas no Rigol e os fatores das pontas; a próxima captura manterá estes ajustes.": "AUTO completed. Review the Rigol waveforms and probe factors; the next capture will keep these settings."
+  "AUTO concluído. Confira as ondas no Rigol e os fatores das pontas; a próxima captura manterá estes ajustes.": "AUTO completed. Review the Rigol waveforms and probe factors; the next capture will keep these settings.",
+  "A opção de aguardar borda deve ser verdadeira ou falsa.": "The wait-for-edge option must be true or false.",
+  "Capturar com os ajustes atuais do Rigol": "Capture using current Rigol settings",
+  "Aguardar borda de disparo": "Wait for a trigger edge",
+  "Desmarcado: permite capturar tensão contínua ou um sinal que não cruze o nível de disparo. O resultado indica quando o disparo foi forçado.": "Unchecked: capture DC voltage or a signal that does not cross the trigger level. The result identifies a forced trigger.",
+  "O nível e a borda alinham o sinal. No modo Sinais, você pode capturar mesmo sem uma borda.": "The level and edge align the signal. In Signals mode you can capture without an edge.",
+  "Disparo forçado pelo aplicativo: esta captura não foi alinhada a uma borda do sinal.": "Trigger forced by the application: this capture was not aligned to a signal edge.",
+  "Aguardará uma borda de disparo.": "Will wait for a trigger edge.",
+  "Capturará mesmo sem borda; um disparo forçado será identificado no resultado.": "Will capture without an edge; a forced trigger will be identified in the result.",
+  "Enquadrar e capturar (AUTO)": "Fit and capture (AUTO)"
 };
 const fragments=Object.keys(english).filter(k=>k.length>8||k==="O canal").sort((a,b)=>b.length-a.length);
 export function t(value){

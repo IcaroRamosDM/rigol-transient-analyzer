@@ -67,6 +67,7 @@ export async function selectCapture(index) {
     t("Sinal sintético para explorar a interface. Este ensaio não acionou o osciloscópio.") :
     meta.origem === "ARQUIVO" ? t("Reanálise de um arquivo salvo; não representa uma nova aquisição.") :
     t("Registro físico salvo em ") + date(meta.instante_utc) + t(". O gráfico exibe esta captura, sem atualização contínua.");
+  if(meta.disparo_forcado)$("sourceNotice").textContent+=" "+t("Disparo forçado pelo aplicativo: esta captura não foi alinhada a uma borda do sinal.");
   $("openOriginal").hidden=!S.run.provenance;
   if(S.run.provenance)$("sourceNotice").textContent+=" "+t("Registro original:")+" "+date(S.run.provenance.metadata.instante_utc)+" · "+(origins[S.run.provenance.metadata.origem]?.[0]||S.run.provenance.metadata.origem);
   const signal=meta.tipo_medicao==="sinais";

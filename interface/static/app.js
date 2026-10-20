@@ -1,5 +1,5 @@
 import { initWorkflow, validateForm, showStep } from "./modules/workflow.js";
-import { initMeasurement, readIntoForm } from "./modules/measurement.js";
+import { initMeasurement, readIntoForm, autoset } from "./modules/measurement.js";
 import { renderJob, poll } from "./modules/jobs.js";
 import { initWorkbench } from "./modules/workbench.js";
 import { t } from "./modules/i18n.js";
@@ -63,6 +63,13 @@ $("settingsForm").addEventListener("submit",e=>{e.preventDefault();start("real")
 $("connect").addEventListener("click",connect);
 $("jobReview").addEventListener("click",()=>{showView("measure");showStep(currentConnection()?2:1,true);});
 $("jobRetry").addEventListener("click",()=>start("real"));
+$("jobAutoset").addEventListener("click",async()=>{
+ if(await autoset())await start("real");
+});
+$("jobCurrent").addEventListener("click",async()=>{
+ $("configuration").value="preserve";controls();saveConfig();
+ if(await readIntoForm(false))await start("real");
+});
 $("jobFresh").addEventListener("click",()=>{$("configuration").value="preserve";controls();saveConfig();start("real");});
 $("demo").addEventListener("click",()=>start("demo"));
 $("emptyDemo").addEventListener("click",()=>start("demo"));

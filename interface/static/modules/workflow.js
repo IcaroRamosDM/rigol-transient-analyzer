@@ -46,6 +46,7 @@ function review(){
   cfg.configuration==="guided"?formatTime(cfg.time_div)+" / div · "+number(cfg.points,0)+t(" pontos por canal"):
    t("Escalas, memória e disparo definidos no instrumento.")
  ];
+ if(signal&&cfg.configuration!=="memory")rows.push(t(cfg.require_edge?"Aguardará uma borda de disparo.":"Capturará mesmo sem borda; um disparo forçado será identificado no resultado."));
  for(const text of rows){const row=document.createElement("p");row.textContent=text;$("measurementReview").append(row);}
  $("start").textContent=t(cfg.configuration==="memory"?"Ler memória do Rigol":"Iniciar medição real");
  $("timeout").disabled=$("captures").disabled||cfg.configuration==="memory";

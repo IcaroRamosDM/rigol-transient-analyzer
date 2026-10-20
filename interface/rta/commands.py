@@ -24,6 +24,8 @@ def build_command(executable, results, run, mode, cfg, configuration_only=False,
     trigger = cfg["trigger"]
     command.extend(["--disparo-canal", str(trigger["source"]), "--disparo-v", str(trigger["level"]),
                     "--disparo-borda", trigger["slope"]])
+    if cfg["measurement"] == "signals" and not cfg["require_edge"]:
+        command.append("--sem-exigir-borda")
     if mode == "real" and not configuration_only:
         if cfg["configuration"] == "preserve": command.append("--sem-configurar")
         elif cfg["configuration"] == "memory": command.append("--existente")

@@ -27,7 +27,7 @@ typedef struct {
   double escala_v, escala_shunt, nominal_v, tempo_div;
   size_t pontos;
   unsigned capturas, porta, ch_v, ch_i, sonda_v, sonda_i;
-  bool existente, simular, configurar, graficos;
+  bool existente, simular, configurar, graficos, captura_livre;
   const char *ip, *saida, *entrada, *banda, *modelo;
 } CtConfig;
 
@@ -65,7 +65,7 @@ typedef struct {
 } CtAnalise;
 
 typedef struct { double minimo, maximo, media; } CtResumo;
-typedef struct { intptr_t fd; double timeout; bool rede_ativa; } CtRede;
+typedef struct { intptr_t fd; double timeout; bool rede_ativa, forcado; } CtRede;
 typedef struct {
   const char *nome, *serie;
   unsigned canais, banda_mhz;
@@ -122,6 +122,7 @@ typedef struct {
   double t0, dt, *dados[4];
   CtPreambulo pre[4];
   CtMedidas medidas[4];
+  bool forcado;
   char instrumento[256], origem[32], instante[64];
 } CtRegistro;
 CtMedidas ct_medir_sinal(const double *dados, size_t n, double dt);

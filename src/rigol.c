@@ -246,19 +246,23 @@ int ct_configurar(CtRede *r, const CtConfig *cfg, char *erro)
   unsigned total=cfg->n_canais?cfg->n_canais:2;
   for (unsigned k=0;k<total;++k) {
     const CtCanal *c=&canais[k]; unsigned ch=c->numero;
+    /* The reference DHO802 rejects textual negative zero with SCPI error -120. */
+    double offset=c->centro==0 ? 0.0 : -c->centro;
     snprintf(comando,sizeof comando,
       ":CHAN%u:DISP ON;:CHAN%u:PROB %u;:CHAN%u:COUP %s;:CHAN%u:UNIT VOLT;"
       ":CHAN%u:SCAL %.12g;:CHAN%u:OFFS %.12g;:CHAN%u:INV OFF;:CHAN%u:BWL %s",
-      ch,ch,c->sonda,ch,c->acoplamento,ch,ch,c->escala,ch,-c->centro,ch,ch,c->banda);
+      ch,ch,c->sonda,ch,c->acoplamento,ch,ch,c->escala,ch,offset,ch,ch,c->banda);
     if(ct_comando(r,comando,erro)<0) return -1;
   }
+  double nivel=cfg->n_canais?cfg->disparo_v:(cfg->baixo_a+cfg->alto_a)*0.5*cfg->resistor;
+  if(nivel==0) nivel=0.0;
   snprintf(comando, sizeof comando,
     ":TIM:MODE MAIN;:TIM:MAIN:SCAL %.12g;:TIM:MAIN:OFFS 0;:ACQ:TYPE NORM;"
     ":ACQ:MDEP %zu;:TRIG:MODE EDGE;:TRIG:COUP DC;:TRIG:EDGE:SOUR CHAN%u;"
     ":TRIG:EDGE:SLOP %s;:TRIG:EDGE:LEV %.12g;:TRIG:SWE NORM",
     cfg->tempo_div,cfg->pontos,cfg->n_canais?cfg->disparo_canal:cfg->ch_i,
     cfg->n_canais?cfg->disparo_borda:"POS",
-    cfg->n_canais?cfg->disparo_v:(cfg->baixo_a+cfg->alto_a)*0.5*cfg->resistor);
+    nivel);
   if (ct_comando(r, comando, erro) < 0 ||
       ct_consultar(r, "*OPC;*OPC?", resposta, sizeof resposta, erro) < 0) return -1;
   if (strcmp(resposta, "1")) return ct_falha(erro, "Configuracao nao concluida.");
@@ -269,7 +273,7 @@ int ct_configurar(CtRede *r, const CtConfig *cfg, char *erro)
     snprintf(comando,sizeof comando,":CHAN%u:SCAL?",c->numero);
     if(confirmar_numero(r,comando,c->escala,erro)<0) return -1;
     snprintf(comando,sizeof comando,":CHAN%u:OFFS?",c->numero);
-    if(confirmar_numero(r,comando,-c->centro,erro)<0) return -1;
+    if(confirmar_numero(r,comando,c->centro==0?0.0:-c->centro,erro)<0) return -1;
     snprintf(comando,sizeof comando,":CHAN%u:COUP?",c->numero);
     if(ct_consultar(r,comando,resposta,sizeof resposta,erro)<0) return -1;
     if(strcmp(resposta,c->acoplamento)) return ct_falha(erro,"Acoplamento nao confirmado.");
@@ -297,6 +301,7 @@ static int nova_interna(CtRede *r, const CtConfig *cfg, char *erro)
 {
   char estado[128];
   double prazo = ct_agora() + cfg->timeout_s;
+  double forcar_apos=ct_agora()+fmin(.25,cfg->timeout_s*.5);
   /* Primeiro comprova que saiu de STOP, evitando aceitar o STOP antigo. */
   if (ct_comando(r, ":RUN", erro) < 0) return -1;
   do {
@@ -315,6 +320,12 @@ static int nova_interna(CtRede *r, const CtConfig *cfg, char *erro)
     if (strcmp(estado,"WAIT") && strcmp(estado,"RUN") &&
         strcmp(estado,"TD") && strcmp(estado,"AUTO"))
       return ct_falha(erro, "Estado de disparo inesperado: %s", estado);
+    if(cfg->sinais && cfg->captura_livre && !r->forcado &&
+        !strcmp(estado,"WAIT") && ct_agora()>=forcar_apos) {
+      if(ct_comando(r,":TFOR",erro)<0) return -1;
+      r->forcado=true;
+      puts("Aviso: captura de sinais sem borda; disparo forcado pelo aplicativo.");
+    }
     ct_pausa();
   }
   if (ct_consultar(r, ":TRIG:SWE?", estado, sizeof estado, erro) < 0) return -1;
@@ -325,6 +336,7 @@ static int nova_interna(CtRede *r, const CtConfig *cfg, char *erro)
 int ct_nova(CtRede *r, const CtConfig *cfg, char *erro)
 {
   char original[32]="",comando[64],limpeza[CT_ERRO];
+  r->forcado=false;
   if (!cfg->configurar) {
     if(ct_consultar(r,":TRIG:SWE?",original,sizeof original,erro)<0) return -1;
     if(strcmp(original,"AUTO") && strcmp(original,"NORM") && strcmp(original,"SING"))

@@ -417,6 +417,7 @@ int ct_exportar_sinais(const char *raiz,const CtRegistro *c,const CtConfig *cfg,
   fputs("{\"versao_formato\":2,\"tipo_medicao\":\"sinais\",\"origem\":",f); json_texto(f,c->origem);
   fputs(",\"instrumento\":",f); json_texto(f,c->instrumento);
   fputs(",\"instante_utc\":",f); json_texto(f,c->instante);
+  fprintf(f,",\"disparo_forcado\":%s",c->forcado?"true":"false");
   fprintf(f,",\"numero\":%u,\"configuracao_aplicada\":%s,\"pontos\":%zu,"
     "\"t0_s\":%.17g,\"dt_s\":%.17g,\"canais\":[",
     c->numero,cfg->configurar?"true":"false",c->n,c->t0,c->dt);

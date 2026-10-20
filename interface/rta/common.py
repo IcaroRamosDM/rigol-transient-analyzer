@@ -15,7 +15,7 @@ DEFAULTS = dict(measurement="transients", configuration="guided", channels=None,
                 scale_v=.5, scale_i=.1, time_div=.0002, bandwidth="20M",
                 low_a=.05, high_a=.15, window_us=50, guard_us=20,
                 horizon_us=300, tolerance_v=.05, hold_us=20,
-                timeout=5, plots=True)
+                timeout=5, plots=True, require_edge=False)
 ACTIVE = {"running", "cancelling"}
 PHASES = {
     "conectando": "Identificando o osciloscópio",
@@ -96,7 +96,9 @@ def settings(data, detected=None):
         raise Problem("Selecione uma profundidade de memória disponível.")
     if cfg["probe_v"] not in (1, 10) or cfg["probe_i"] not in (1, 10):
         raise Problem("As pontas devem estar em 1× ou 10×.")
-    numeric = set(DEFAULTS) - set(integers) - {"ip", "port", "bandwidth", "plots", "model", "measurement", "configuration", "channels", "trigger"}
+    if not isinstance(cfg["require_edge"], bool):
+        raise Problem("A opção de aguardar borda deve ser verdadeira ou falsa.")
+    numeric = set(DEFAULTS) - set(integers) - {"ip", "port", "bandwidth", "plots", "model", "measurement", "configuration", "channels", "trigger", "require_edge"}
     for key in numeric:
         value = cfg[key]
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value):

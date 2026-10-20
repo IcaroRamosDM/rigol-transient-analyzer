@@ -112,6 +112,8 @@ export function controls() {
   $("jobReview").disabled = busy;
   if($("jobRetry"))$("jobRetry").disabled=busy||!currentConnection();
   if($("jobFresh"))$("jobFresh").disabled=busy||!currentConnection();
+  if($("jobCurrent"))$("jobCurrent").disabled=busy||!currentConnection();
+  if($("jobAutoset"))$("jobAutoset").disabled=busy||!currentConnection();
   $("demo").disabled = busy;
   $("emptyDemo").disabled = busy;
   $("start").disabled = busy || !currentConnection();
