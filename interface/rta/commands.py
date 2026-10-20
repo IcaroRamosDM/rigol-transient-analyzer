@@ -1,7 +1,9 @@
 """Argument construction shared by acquisition and configuration-only mode."""
 
-def build_command(executable, results, run, mode, cfg, configuration_only=False, input_file=None):
+def build_command(executable, results, run, mode, cfg, configuration_only=False, input_file=None, expected_identity=None):
     command = [str(executable)]
+    if mode == "real" and expected_identity:
+        command.extend(["--identidade-esperada", expected_identity])
     if configuration_only:
         command.append("--configurar-apenas")
         cfg = {**cfg, "plots": False, "captures": 1}

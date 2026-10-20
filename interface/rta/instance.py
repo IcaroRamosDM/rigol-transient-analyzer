@@ -40,19 +40,37 @@ class InstanceLock:
         return True
 
     def publish(self, url, identifier):
-        temporary = self.metadata.with_suffix(".tmp")
+        temporary = self.metadata.with_suffix(f".{os.getpid()}.tmp")
         temporary.write_text(json.dumps(dict(url=url, instance=identifier, pid=os.getpid())), encoding="utf-8")
-        temporary.replace(self.metadata)
+        deadline = time.monotonic() + 2
+        try:
+            while True:
+                try:
+                    temporary.replace(self.metadata)
+                    break
+                except PermissionError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(.05)
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def discover(self, attempts=1):
         for attempt in range(attempts):
             try:
                 meta = json.loads(self.metadata.read_text(encoding="utf-8"))
+                if not isinstance(meta, dict) or not isinstance(meta.get("url"), str):
+                    raise ValueError("Invalid instance metadata")
                 url = urlsplit(meta["url"])
                 if url.scheme != "http" or url.hostname not in {"127.0.0.1", "localhost"} or not url.port or url.path:
                     raise ValueError("Invalid instance URL")
                 with urlopen(meta["url"] + "/api/bootstrap", timeout=1) as response:
                     data = json.load(response)
+                if not isinstance(data, dict):
+                    raise ValueError("Invalid instance response")
                 if data.get("app") == "Rigol Transient Analyzer" and not data.get("closed") and data.get("instance") == meta["instance"]:
                     return meta["url"], data
             except (OSError, ValueError, KeyError, URLError):
@@ -72,13 +90,17 @@ class InstanceLock:
 
 def stop_running():
     instance = InstanceLock()
-    current = instance.discover()
-    if not current:
-        # An absent listener is safe only when there is no process still starting.
-        if not instance.acquire():
+    deadline = time.monotonic() + 10
+    while True:
+        current = instance.discover()
+        if current:
+            break
+        if instance.acquire():
+            instance.close()
+            return 0
+        if time.monotonic() >= deadline:
             return 2
-        instance.close()
-        return 0
+        time.sleep(.1)
     url, data = current
     request = Request(url + "/api/shutdown", data=b"{}", method="POST",
                       headers={"Content-Type":"application/json", "X-RTA-Token":data["token"]})

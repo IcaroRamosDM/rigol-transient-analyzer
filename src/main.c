@@ -26,6 +26,7 @@ static void ajuda(const char *programa)
     "Padrao: identifica Rigol DHO800/DHO900 e faz UMA captura NOVA.\n"
     "--modelo auto|MODELO     detecta ou exige modelo especifico (padrao auto)\n"
     "--listar-modelos         lista os perfis disponiveis\n"
+    "--identidade-esperada IDN exige a identidade completa antes de qualquer ajuste\n"
     "--existente              le a memoria congelada; nao reconfigura os canais\n"
     "--configurar-apenas     aplica e confirma o perfil; nao captura nem salva arquivos\n"
     "--sem-configurar         captura nova com configuracao atual do Rigol\n"
@@ -88,8 +89,9 @@ int main(int argc,char **argv)
   bool apenas_configurar=false;
   enum {SIM=1000,EXISTENTE,SEMCONFIG,CAPTURAS,SAIDA,RESISTOR,BAIXO,ALTO,JANELA,
     GUARDA,HORIZONTE,TOLERANCIA,PERMANENCIA,TIMEOUT,PONTOS,PORTA,CHV,CHI,
-    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA,APENASCONFIG,MODELO,MODELOS,TIPO,CANAL,DISPCANAL,DISPV,DISPBORDA,LIVRE};
+    SONDAV,SONDAI,ESCALAV,ESCALAI,NOMINAL,TEMPO,BANDA,GRAFICOS,ENTRADA,APENASCONFIG,MODELO,MODELOS,TIPO,CANAL,DISPCANAL,DISPV,DISPBORDA,LIVRE,IDENTIDADE};
   const struct option opcoes[]={
+    {"identidade-esperada",required_argument,NULL,IDENTIDADE},
     {"sem-exigir-borda",no_argument,NULL,LIVRE},
     {"tipo",required_argument,NULL,TIPO},{"canal",required_argument,NULL,CANAL},
     {"disparo-canal",required_argument,NULL,DISPCANAL},
@@ -126,6 +128,7 @@ int main(int argc,char **argv)
     }
     switch (opcao) {
       case 'h': ajuda(argv[0]); return EXIT_SUCCESS;
+      case IDENTIDADE: cfg.identidade_esperada=optarg; break;
       case LIVRE: cfg.captura_livre=true; break;
       case TIPO:
         if (strcmp(optarg,"sinais") && strcmp(optarg,"transientes")) {
@@ -223,6 +226,10 @@ int main(int argc,char **argv)
     if (ct_conectar(&rede,&cfg,erro)<0 ||
         ct_identificar(&rede,id,sizeof id,erro)<0 ||
         ct_validar_modelo(&cfg,id,erro)<0) goto falha;
+    if (cfg.identidade_esperada && strcmp(id,cfg.identidade_esperada)) {
+      ct_falha(erro,"A identidade do instrumento mudou. Conecte e identifique o Rigol novamente. Nenhum ajuste enviado.");
+      goto falha;
+    }
     controle_autorizado=true;
     if (cfg.configurar) {
       progresso("configurando",0,cfg.capturas);
@@ -239,8 +246,8 @@ int main(int argc,char **argv)
   printf("Resultados: %s\n",raiz);
   if (cfg.sinais) {
     int resultado=ct_executar_sinais(&rede,&cfg,id,raiz,erro);
-    ct_desconectar(&rede);
     if (resultado<0) goto falha;
+    ct_desconectar(&rede);
     return EXIT_SUCCESS;
   }
   unsigned concluidas=0;
@@ -280,7 +287,7 @@ int main(int argc,char **argv)
         "Corrente do ramo comutado: media=%.9g A\n"
         "Bordas=%zu; validas=%zu; acomodadas=%zu\n",
         j,c.origem,c.n,c.dt,v.minimo,v.maximo,v.media,i.media,a.n,a.validos,a.acomodados);
-      for (size_t k=0;k<a.n;++k) {
+      for (size_t k=0;k<a.n && k<200;++k) {
         const CtEvento *e=&a.eventos[k];
         printf("  %zu %s t=%.9g s: %s",k+1,e->direcao?"subida":"descida",e->tempo,ct_status(e->status));
         if (e->status==CT_VALIDO) {
@@ -291,6 +298,7 @@ int main(int argc,char **argv)
         }
         putchar('\n');
       }
+      if (a.n>200) printf("  Exibidas 200 de %zu transicoes; lista completa em eventos.csv.\n",a.n);
       ++concluidas; eventos+=a.n; validos+=a.validos; acomodados+=a.acomodados;
     }
     ct_liberar_analise(&a); ct_liberar(&c);

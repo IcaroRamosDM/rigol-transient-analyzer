@@ -1,6 +1,6 @@
 """Workflow extensions; instrument operations share the acquisition lock."""
 from contextlib import contextmanager
-from .common import ACTIVE, DEFAULTS, Problem, settings
+from .common import ACTIVE, DEFAULTS, Problem, IdentityChanged, settings
 from .diagnostics import diagnose
 
 
@@ -21,7 +21,11 @@ class Workbench:
             cfg=settings(cfg|{"model":self.connection["model"]})
             self.scope.update(busy=True,error="")
         try:
-            yield cfg
+            yield cfg | {"_identity": self.connection.get("identity")}
+        except IdentityChanged:
+            with self.lock:
+                self.connection["connected"] = False
+            raise
         except OSError as error:
             raise Problem("Não foi possível comunicar com o Rigol. Verifique o cabo e tente conectar novamente.",502) from error
         finally:

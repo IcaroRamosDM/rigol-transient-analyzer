@@ -52,19 +52,15 @@ class ResultStore:
                         continue
                     if any(not isinstance(c, dict) or c.get("numero") not in (1,2,3,4) for c in meta["canais"]):
                         continue
-                events = []
-                with self.inside(path, folder.name + ("/medidas.csv" if meta.get("tipo_medicao") == "sinais" else "/eventos.csv")).open(newline="") as file:
-                    events = []
-                    for row in (() if meta.get("tipo_medicao") == "sinais" else csv.DictReader(file)):
-                        event = {key: value if key in ("direcao", "status") else
-                                 (float(value) if value else None) for key, value in row.items()}
-                        if any(isinstance(value, float) and not math.isfinite(value)
-                               for value in event.values()):
-                            raise ValueError("Non-finite event")
-                        events.append(event)
+                page = dict(events=[], offset=0, total=0)
+                if meta.get("tipo_medicao") == "sinais":
+                    self.inside(path, folder.name + "/medidas.csv")
+                else:
+                    page = self.events(run, folder.name)
+                events = page["events"]
                 pngs = [file.name for file in sorted((folder / "graficos").glob("*.png"))
                         if file.is_file() and file.resolve().is_relative_to(path)]
-                captures.append(dict(id=folder.name, metadata=meta, events=events, images=pngs))
+                captures.append(dict(id=folder.name, metadata=meta, events=events, event_count=page["total"], event_offset=page["offset"], images=pngs))
             except (OSError, ValueError, TypeError, AttributeError, KeyError, Problem):
                 continue
         if not captures:
@@ -82,6 +78,52 @@ class ResultStore:
         if not isinstance(provenance, dict):
             provenance = None
         return dict(id=run, captures=captures, execution=execution,provenance=provenance)
+
+    @staticmethod
+    def _parse_event(row):
+        event = {key: value if key in ("direcao", "status") else
+                 (float(value) if value else None) for key, value in row.items()}
+        if any(isinstance(value, float) and not math.isfinite(value) for value in event.values()):
+            raise Problem("Dados de transição inválidos.")
+        if not isinstance(event.get("evento"), (int,float)) or event["evento"] < 1:
+            raise Problem("Dados de transição inválidos.")
+        return event
+
+    def events(self, run, capture, offset=0, limit=200, valid_only=False):
+        if not isinstance(capture, str) or not re.fullmatch(r"captura_\d+", capture):
+            raise Problem("Captura inválida.")
+        offset, limit = int(offset), int(limit)
+        if offset < 0 or not 1 <= limit <= 200:
+            raise Problem("Página de transições inválida.")
+        root = self.run_path(run)
+        meta = read_json(self.inside(root, capture+"/metadados.json"))
+        total = meta.get("eventos_validos" if valid_only else "bordas", 0)
+        if isinstance(total, bool) or not isinstance(total, int) or not 0 <= total <= 1000000:
+            raise Problem("Dados de transição inválidos.")
+        rows = []
+        with self.inside(root, capture+"/eventos.csv").open(newline="") as stream:
+            index = 0
+            for row in csv.DictReader(stream):
+                if valid_only and row.get("status") != "valido":
+                    continue
+                if index >= offset:
+                    rows.append(self._parse_event(row))
+                    if len(rows) >= limit:
+                        break
+                index += 1
+        return dict(events=rows, offset=offset, total=total)
+
+    def event(self, run, capture, identifier):
+        if isinstance(identifier, bool) or not isinstance(identifier, int) or identifier < 1:
+            raise Problem("Selecione uma transição válida.")
+        if not isinstance(capture, str) or not re.fullmatch(r"captura_\d+", capture):
+            raise Problem("Captura inválida.")
+        root = self.run_path(run)
+        with self.inside(root, capture+"/eventos.csv").open(newline="") as stream:
+            for row in csv.DictReader(stream):
+                if float(row["evento"]) == identifier:
+                    return self._parse_event(row)
+        raise Problem("Selecione uma transição válida.")
 
     def history(self):
         history = []

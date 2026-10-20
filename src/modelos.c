@@ -10,6 +10,16 @@ static const CtModelo modelos[] = {
 #undef RIGOL_MODEL
 };
 
+double ct_limite_offset(double escala, unsigned sonda)
+{
+  double normal = escala / (double)sonda;
+#define RIGOL_OFFSET(maximo, limite, inclusivo) \
+  if (normal < maximo || (inclusivo && normal <= maximo)) return limite * sonda;
+#include "rigol_offset_limits.def"
+#undef RIGOL_OFFSET
+  return 0;
+}
+
 const CtModelo *ct_modelo(const char *nome)
 {
   if (!nome) return NULL;
@@ -66,11 +76,16 @@ int ct_validar_modelo(const CtConfig *cfg, const char *id, char *erro)
     if(ch->numero>m->canais) return ct_falha(erro,"Canal indisponivel no %s.",m->nome);
     if(cfg->configurar && (ch->escala<m->escala_min*ch->sonda || ch->escala>10*ch->sonda))
       return ct_falha(erro,"Escala vertical fora da faixa do %s.",m->nome);
+    if(cfg->configurar && (ch->centro < -ct_limite_offset(ch->escala,ch->sonda) ||
+                          ch->centro > ct_limite_offset(ch->escala,ch->sonda)))
+      return ct_falha(erro,"Centro do CH%u fora da faixa de offset: +/-%.9g V.",ch->numero,ct_limite_offset(ch->escala,ch->sonda));
   }
   if (!cfg->configurar) return 0;
   if (cfg->tempo_div<m->tempo_min || cfg->tempo_div>m->tempo_max)
     return ct_falha(erro,"Tempo por divisao fora da faixa do %s: %.9g a %.9g s.",
                     m->nome,m->tempo_min,m->tempo_max);
+  if (!cfg->n_canais && cfg->nominal_v > ct_limite_offset(cfg->escala_v,cfg->sonda_v))
+    return ct_falha(erro,"Centro fora da faixa de offset para a escala e ponta selecionadas.");
   if (!cfg->n_canais && (cfg->escala_v<m->escala_min*cfg->sonda_v || cfg->escala_v>10*cfg->sonda_v ||
       cfg->escala_shunt<m->escala_min*cfg->sonda_i || cfg->escala_shunt>10*cfg->sonda_i))
     return ct_falha(erro,"Escala vertical fora da faixa do %s para a ponta selecionada.",m->nome);

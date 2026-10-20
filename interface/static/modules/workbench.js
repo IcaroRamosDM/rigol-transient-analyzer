@@ -60,9 +60,7 @@ function captureTools(){
  $("reportDownload").hidden=true;
 }
 function reanalysisSettings(){
- const m=S.capture.metadata,cfg={...S.defaults,...config(),measurement:"transients",configuration:"guided",channels:null,trigger:null,
-  voltage_channel:(m.canais_solicitados||[1,2])[0],current_channel:(m.canais_solicitados||[1,2])[1],
-  resistor:m.resistor_ohm,captures:1};
+ const m=S.capture.metadata,cfg={resistor:m.resistor_ohm,plots:config().plots};
  for(const [id,key,factor] of [["reLow","low_a",1000],["reHigh","high_a",1000],["reWindow","window_us",1],
   ["reGuard","guard_us",1],["reHorizon","horizon_us",1],["reTolerance","tolerance_v",1000],["reHold","hold_us",1]])
   cfg[key]=Number($(id).value)/factor;
@@ -82,16 +80,34 @@ async function fillSelection(field, preferred={}){
   if(request!==sequence)return;
   detail.captures.forEach(c=>option(capture,c.id,c.id));
   capture.value=chosen.capture||detail.captures[0]?.id||"";
-  const loadEvents=()=>{
+  let eventOffset=0;
+  const loadEvents=async(preferredEvent=chosen.event)=>{
+   const selected=detail.captures.find(c=>c.id===capture.value);if(!selected)return;
+   const selectedCapture=capture.value;
+   const query=new URLSearchParams({run:run.value,capture:selectedCapture,offset:eventOffset,limit:200,valid:1});
+   const page=await api("/api/events?"+query);
+   if(request!==sequence||capture.value!==selectedCapture)return;
    event.replaceChildren();
-   const selected=detail.captures.find(c=>c.id===capture.value);
-   for(const e of selected?.events||[])if(e.status==="valido")option(event,t("Evento")+" "+e.evento+" · "+t(e.direcao),e.evento).dataset.direction=e.direcao;
+   for(const e of page.events)option(event,t("Evento")+" "+e.evento+" · "+t(e.direcao),e.evento).dataset.direction=e.direcao;
+   if(preferredEvent&&!page.events.some(e=>e.evento===Number(preferredEvent))){
+    const selectedEvent=await api("/api/event?"+new URLSearchParams({run:run.value,capture:selectedCapture,id:preferredEvent}));
+    if(request!==sequence||capture.value!==selectedCapture)return;
+    if(selectedEvent.status==="valido")option(event,t("Evento")+" "+selectedEvent.evento+" · "+t(selectedEvent.direcao),selectedEvent.evento).dataset.direction=selectedEvent.direcao;
+   }
    if(!event.options.length)option(event,t("Sem transições válidas"),"");
    if(chosen.direction){const matching=[...event.options].find(o=>o.dataset.direction===chosen.direction);if(matching)event.value=matching.value;}
-   if(chosen.event)event.value=String(chosen.event);
+   if(preferredEvent)event.value=String(preferredEvent);
    if(!event.value&&event.options.length)event.selectedIndex=0;
+   if(eventOffset>0)option(event,t("Transições anteriores"),"previous");
+   if(eventOffset+page.events.length<page.total)option(event,t("Próximas transições"),"next");
   };
-  capture.onchange=loadEvents;loadEvents();
+  capture.onchange=()=>{eventOffset=0;loadEvents(null).catch(e=>say(e.message,"error"));};
+  event.onchange=()=>{
+   if(!["previous","next"].includes(event.value))return;
+   eventOffset=Math.max(0,eventOffset+(event.value==="next"?200:-200));
+   loadEvents(null).catch(e=>say(e.message,"error"));
+  };
+  await loadEvents();
  }
  run.onchange=()=>loadCaptures({}).catch(e=>say(e.message,"error"));
  await loadCaptures(preferred);

@@ -1,8 +1,11 @@
 """Loopback-only HTTP API and local static assets."""
+import os
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 import json
 import mimetypes
+import logging
 import secrets
 import shutil
 import threading
@@ -69,6 +72,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(app.history())
             elif url.path == "/api/run":
                 self.json(app.detail(query.get("id", "")))
+            elif url.path == "/api/events":
+                self.json(app.store.events(query.get("run", ""), query.get("capture", ""),
+                          query.get("offset", 0), query.get("limit", 200), query.get("valid") == "1"))
+            elif url.path == "/api/event":
+                self.json(app.store.event(query.get("run", ""), query.get("capture", ""), int(query.get("id", 0))))
             elif url.path == "/api/waveform":
                 self.json(app.waveform(query.get("run", ""), query.get("capture", ""),
                                        query.get("start"), query.get("end"), query.get("limit", 2400)))
@@ -90,9 +98,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise Problem("Página não encontrada.", 404)
         except Problem as error:
             self.json(dict(error=str(error)), error.status)
-        except (ValueError, KeyError, OSError) as error:
+        except (ValueError, TypeError, AttributeError, OverflowError, KeyError, OSError) as error:
             if not isinstance(error, (BrokenPipeError, ConnectionResetError)):
                 self.json(dict(error="Não foi possível ler este resultado."), 400)
+        except Exception:
+            logging.exception("GET request failed")
+            self.json(dict(error="Erro interno. Consulte o registro do aplicativo."), 500)
 
     def do_POST(self):
         try:
@@ -139,10 +150,25 @@ class Handler(BaseHTTPRequestHandler):
             self.json(dict(error=str(error)), error.status)
         except (ValueError, TypeError, OverflowError, KeyError, OSError):
             self.json(dict(error="Pedido inválido."), 400)
+        except Exception:
+            logging.exception("POST request failed")
+            self.json(dict(error="Erro interno. Consulte o registro do aplicativo."), 500)
+
+
+class LocalHTTPServer(ThreadingHTTPServer):
+    # Sharing a listening port is nondeterministic on Windows. Python 3.14
+    # may also enable SO_REUSEPORT by default on supported Unix systems.
+    allow_reuse_address = os.name != "nt"
+    allow_reuse_port = False
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def server(app, port=8765):
-    instance = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    instance = LocalHTTPServer(("127.0.0.1", port), Handler)
     instance.app = app
     instance.daemon_threads = True
     return instance

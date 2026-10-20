@@ -13,8 +13,8 @@ def selection(store, item):
     event=item.get("event")
     if isinstance(event,bool) or not isinstance(event,int):
         raise Problem("Selecione uma transição válida.")
-    chosen=next((e for e in capture["events"] if e["evento"]==event and e["status"]=="valido"),None)
-    if chosen is None:
+    chosen=store.event(run["id"],capture["id"],event)
+    if chosen["status"] != "valido":
         raise Problem("Selecione uma transição válida.")
     return run,capture,chosen
 
@@ -28,7 +28,7 @@ def compare(store, data):
         raise Problem("Compare transições com a mesma direção.")
     start=max(-(c["metadata"]["guarda_s"]+c["metadata"]["janela_s"]) for _,c,_ in selected)
     end=min(c["metadata"]["horizonte_s"] for _,c,_ in selected)
-    metrics=("delta_i_a","delta_v_v","afundamento_v","sobretensao_v","acomodacao_s")
+    metrics=("delta_i_a","delta_v","afundamento_v","sobretensao_v","acomodacao_s")
     rows=[]
     for run,capture,event in selected:
         t=event["tempo_s"]

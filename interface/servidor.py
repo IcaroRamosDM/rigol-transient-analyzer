@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 
 if __package__ in (None, ""):
@@ -43,17 +44,20 @@ def main():
     if args.port is not None and not 1 <= args.port <= 65535:
         parser.error("Use uma porta de 1 a 65535.")
     instance = InstanceLock()
-    if not instance.acquire():
-        current = instance.discover(attempts=30)
-        if not current:
-            raise SystemExit("O aplicativo já está iniciando. Aguarde alguns segundos e abra-o novamente.")
-        if not args.no_browser:
-            open_browser(current[0])
-        return
+    deadline = time.monotonic() + 10
+    while not instance.acquire():
+        current = instance.discover()
+        if current:
+            if not args.no_browser:
+                open_browser(current[0])
+            return
+        if time.monotonic() >= deadline:
+            raise SystemExit("O aplicativo não confirmou a abertura no prazo. Consulte o registro de inicialização.")
+        time.sleep(.1)
+    http = None
     try:
         app = App()
         ports = [args.port] if args.port else range(8765, 8776) if os.name == "nt" else [8765]
-        http = None
         for port in ports:
             try:
                 http = server(app, port)
@@ -78,10 +82,12 @@ def main():
                         process.wait(timeout=8)
                     except subprocess.TimeoutExpired:
                         app._signal(process, KILL)
-        finally:
-            http.server_close()
     finally:
-        instance.close()
+        try:
+            if http is not None:
+                http.server_close()
+        finally:
+            instance.close()
 
 
 if __name__ == "__main__":

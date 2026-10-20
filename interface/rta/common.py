@@ -36,6 +36,11 @@ class Problem(Exception):
         self.status = status
 
 
+class IdentityChanged(Problem):
+    def __init__(self):
+        super().__init__("A identidade do instrumento mudou. Conecte e identifique o Rigol novamente. Nenhum ajuste enviado.", 409)
+
+
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 

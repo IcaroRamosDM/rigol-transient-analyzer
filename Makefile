@@ -5,7 +5,7 @@ LDLIBS += -lm
 FONTES = src/main.c src/comum.c src/analise.c src/rigol.c src/modelos.c src/arquivos.c src/sinais.c
 OBJETOS = $(FONTES:src/%.c=build/%.o)
 DEPS = $(OBJETOS:.o=.d)
-PYTHON ?= python3
+PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 MINGW_CC ?= x86_64-w64-mingw32-gcc
 MINGW_WINDRES ?= x86_64-w64-mingw32-windres
 WINDOWS_FLAGS = -municode -std=c17 -O2 -Wall -Wextra -Wpedantic -Werror -fno-builtin -D__USE_MINGW_ANSI_STDIO=1 -D_WIN32_WINNT=0x0A00 -Iinclude -static
@@ -29,7 +29,7 @@ build/windows/core.res: packaging/windows/core.rc packaging/windows/app.manifest
 	mkdir -p build/windows
 	$(MINGW_WINDRES) -Ipackaging/windows packaging/windows/core.rc -O coff -o $@
 
-build/windows/carac_transientes.exe: $(FONTES) include/carac.h include/rigol_models.def build/windows/core.res
+build/windows/carac_transientes.exe: $(FONTES) include/carac.h include/rigol_models.def include/rigol_offset_limits.def build/windows/core.res
 	$(MINGW_CC) $(WINDOWS_FLAGS) $(FONTES) build/windows/core.res -lws2_32 -lm -o $@
 
 antigos: build/receber_onda build/identificar_rigol build/consultar_rigol build/parametros_onda

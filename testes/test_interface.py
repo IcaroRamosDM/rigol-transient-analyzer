@@ -250,7 +250,7 @@ class InterfaceTests(InterfaceHarness, unittest.TestCase):
         from test_integracao import Instrumento
         inst = Instrumento()
         try:
-            with mock.patch("interface.rta.service.scope_query", return_value="RIGOL TECHNOLOGIES,DHO802,FIXTURE,TEST"):
+            with mock.patch("interface.rta.service.scope_query", return_value=inst.consulta("*IDN?")):
                 self.app.connect(dict(ip="127.0.0.1", port=inst.porta))
             self.app.start(dict(mode="real", settings=dict(ip="127.0.0.1", port=inst.porta,
                            points=1000, plots=False, timeout=1)))

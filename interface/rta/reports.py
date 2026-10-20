@@ -71,6 +71,14 @@ def report(store,data):
 
 
 
+def trigger_notice(metadata, language):
+    if metadata.get("disparo_forcado"):
+        return ("Forced trigger: the application acquired this record without a signal edge. "
+                "Zero time does not identify a signal transition." if language == "en" else
+                "Disparo forçado: o aplicativo adquiriu este registro sem uma borda do sinal. "
+                "O tempo zero não identifica uma transição do sinal.")
+    return ""
+
 def report_context(run,capture,language):
     """Retain the originating instrument across file-analysis generations."""
     text=TEXT[language];meta=capture["metadata"];provenance=run.get("provenance")
@@ -149,6 +157,8 @@ def render(stream,run,capture,wave,notes,language):
             c.drawPath(path)
     story=[p("Rigol Transient Analyzer","RSmall"),p(text["title"],"RTitle"),
            p(text["origins"].get(meta["origem"],meta["origem"]),"RHead")]
+    notice=trigger_notice(meta, language)
+    if notice:story.append(p(notice,"RHead"))
     context=report_context(run,capture,language)
     conditions=[(text["instrument"],context["instrument"]),(context["date_label"],meta["instante_utc"]),
                 (text["samples"],meta["pontos"])]
@@ -187,7 +197,7 @@ def render(stream,run,capture,wave,notes,language):
                          value(event.get("afundamento_v"),1000,2),value(event.get("sobretensao_v"),1000,2),
                          value(event.get("acomodacao_s"),1e6,2) if event.get("acomodacao_s") is not None else text["unsettled"] if valid else "-"])
         story += [p(text["events"],"RHead"),table(rows,[width*f for f in (.08,.14,.22,.17,.17,.22)])]
-        if len(capture["events"])>200:story.append(p(text["partial"],"RSmall"))
+        if capture.get("event_count",len(capture["events"]))>200:story.append(p(text["partial"],"RSmall"))
     if notes:story += [p(text["notes"],"RHead"),p(notes)]
     story += [Spacer(1,12),p(text["disclaimer"],"RSmall")]
     def footer(c,doc):

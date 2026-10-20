@@ -27,9 +27,16 @@ class ProfileStore:
             for path in self.directory.glob("*.json"):
                 try:
                     row = read_json(self.path(path.stem))
+                    if not isinstance(row, dict) or row.get("id") != path.stem:
+                        continue
+                    name = row.get("name")
+                    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80 or any(ord(c)<32 for c in name):
+                        continue
+                    if not isinstance(row.get("updated_at"), str):
+                        continue
                     row["settings"] = settings(row["settings"])
                     result.append(row)
-                except (OSError, ValueError, KeyError, Problem):
+                except (OSError, ValueError, TypeError, AttributeError, OverflowError, KeyError, Problem):
                     continue
             return sorted(result, key=lambda row: row["name"].casefold())
 

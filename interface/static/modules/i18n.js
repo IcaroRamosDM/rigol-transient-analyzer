@@ -639,7 +639,16 @@ export const english={
   "Disparo forçado pelo aplicativo: esta captura não foi alinhada a uma borda do sinal.": "Trigger forced by the application: this capture was not aligned to a signal edge.",
   "Aguardará uma borda de disparo.": "Will wait for a trigger edge.",
   "Capturará mesmo sem borda; um disparo forçado será identificado no resultado.": "Will capture without an edge; a forced trigger will be identified in the result.",
-  "Enquadrar e capturar (AUTO)": "Fit and capture (AUTO)"
+  "Enquadrar e capturar (AUTO)": "Fit and capture (AUTO)",
+  "A identidade do instrumento mudou. Conecte e identifique o Rigol novamente. Nenhum ajuste enviado.": "The instrument identity changed. Connect and identify the Rigol again. No settings were sent.",
+  "Centro fora da faixa de offset para esta escala e ponta. Limite:": "Screen center exceeds the offset range for this scale and probe. Limit:",
+  "Erro interno. Consulte o registro do aplicativo.": "Internal error. Check the application log.",
+  "Dados de transição inválidos.": "Invalid transition data.",
+  "Página de transições inválida.": "Invalid transition page.",
+  "Transições anteriores": "Previous transitions",
+  "Próximas transições": "Next transitions",
+  "Transições exibidas:": "Displayed transitions:",
+  "O CSV preserva todas as transições. A exportação PNG inclui até 20 detalhes por captura.": "The CSV preserves every transition. PNG export includes up to 20 event details per capture."
 };
 const fragments=Object.keys(english).filter(k=>k.length>8||k==="O canal").sort((a,b)=>b.length-a.length);
 export function t(value){

@@ -113,13 +113,6 @@ export async function selectCapture(index) {
     $("validEvents").textContent=meta.eventos_validos+" / "+meta.bordas;
   }
   $("pointCount").textContent=number(meta.pontos,0)+t(" pontos por canal");
-  $("eventSelect").replaceChildren();
-  S.capture.events.forEach((event, i) => {
-    const option = document.createElement("option");
-    option.value = i; option.textContent = t("Evento ") + event.evento + " · " +
-      (event.direcao === "subida" ? t("subida") : t("descida")) + (event.status === "valido" ? "" : " ⚠");
-    $("eventSelect").append(option);
-  });
   S.event = S.capture.events.findIndex(e => e.status === "valido" && e.direcao === "subida");
   if (S.event < 0) S.event = S.capture.events.length ? 0 : -1;
   $("eventSelect").value = S.event;
@@ -127,14 +120,28 @@ export async function selectCapture(index) {
   document.dispatchEvent(new CustomEvent("rta:capture"));
 }
 export function event() { return S.capture && S.capture.events[S.event]; }
+function eventOptions(){
+  $("eventSelect").replaceChildren();
+  S.capture.events.forEach((event,i)=>{
+    const option=new Option(t("Evento ")+event.evento+" · "+t(event.direcao)+(event.status==="valido"?"":" ⚠"),i);
+    $("eventSelect").append(option);
+  });
+  $("eventSelect").value=S.event;
+}
 export function renderEvent() {
   const e = event(), meta = S.capture.metadata;
   if(meta.tipo_medicao==="sinais"){
     $("eventWindow").disabled=true;$("edgeZoom").disabled=true;exports();return;
   }
+  eventOptions();
+  const offset=S.capture.event_offset||0,total=S.capture.event_count??S.capture.events.length;
+  const first=offset+(S.capture.events.length?1:0),last=offset+S.capture.events.length;
+  $("eventPageInfo").textContent=t("Transições exibidas: ")+first+"–"+last+" / "+total;
+  $("prevEventsPage").disabled=offset===0;
+  $("nextEventsPage").disabled=last>=total;
   const valid = e && e.status === "valido";
-  $("prevEvent").disabled = S.event <= 0;
-  $("nextEvent").disabled = S.event >= S.capture.events.length - 1;
+  $("prevEvent").disabled = offset+S.event <= 0;
+  $("nextEvent").disabled = offset+S.event >= total - 1;
   $("eventSelect").disabled = S.capture.events.length === 0;
   $("eventWindow").disabled = !e; $("edgeZoom").disabled = !e;
   const reasons = {janela_antes_incompleta: t("Janela anterior incompleta."),

@@ -123,7 +123,12 @@ function render(){
  const profile=S.models?.find(p=>p.model===(cfg.model==="auto"?S.connection.model:cfg.model))||S.models?.find(p=>p.model==="DHO802");
  for(const ch of channels){
   const scale=$("channelEditor").querySelector('[data-channel="'+ch.number+'"] [data-channel-field="scale"]');
-  if(scale&&profile){scale.min=String(profile.min_scale*ch.probe);scale.max=String(profile.max_scale*ch.probe);}
+  if(scale&&profile){
+    scale.min=String(profile.min_scale*ch.probe);scale.max=String(profile.max_scale*ch.probe);
+    const center=$("channelEditor").querySelector('[data-channel="'+ch.number+'"] [data-channel-field="center"]');
+    const row=profile.offset_limits?.find(r=>ch.scale/ch.probe<r.scale||(r.inclusive&&ch.scale/ch.probe<=r.scale));
+    if(center&&row){center.min=String(-row.offset*ch.probe);center.max=String(row.offset*ch.probe);}
+   }
  }
  const selected=channels.find(c=>c.number===trigger.source);
  if(selected&&Number.isFinite(selected.center)&&Number.isFinite(selected.scale)){

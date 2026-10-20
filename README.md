@@ -243,6 +243,15 @@ defined once in `include/rigol_models.def` and shared by C and Python.
 
 ## Windows installer
 
+Opening the Start menu shortcut again reopens the existing interface. During a
+restart, startup waits for the previous instance to release ownership. Each
+HTTP listener owns its port exclusively; if the default port is occupied,
+the app selects another local port and opens its actual address automatically.
+Closing the browser tab leaves the local app running. Use **Encerrar aplicativo /
+Close application** in the interface or its Start menu shortcut to stop it.
+Startup failures release the listener and include their cause, version and process
+ID in the application log.
+
 Download the Windows x64 installer from [GitHub Releases](https://github.com/IcaroRamosDM/rigol-transient-analyzer/releases/latest).
 The file is named `RigolTransientAnalyzer-<version>-windows-x64-setup.exe`.
 
@@ -294,7 +303,7 @@ provided with the release. To calculate a downloaded installer's checksum
 in PowerShell, replace the filename with the version you downloaded:
 
 ```powershell
-Get-FileHash .\RigolTransientAnalyzer-0.4.1-windows-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\RigolTransientAnalyzer-0.4.2-windows-x64-setup.exe -Algorithm SHA256
 ```
 
 Compare the value with the release checksum file. Physical model-validation
@@ -322,7 +331,9 @@ make dependencias
 ```
 
 The executable is `build/carac_transientes`. `make dependencias` installs
-plotting dependencies from `requirements-graficos.txt` into `.venv`.
+plotting and PDF dependencies from `requirements-graficos.txt` into `.venv`. The
+Makefile selects that virtual environment automatically for tests when it exists. Use
+`make test PYTHON=.venv/bin/python` to select it explicitly.
 These dependencies are needed for PNG generation; the browser interface,
 interactive charts, and CSV/JSON exports use Python's standard library
 and local browser assets.
@@ -530,7 +541,8 @@ relatório (download report)**.
 The selected interface language is used for the report. It includes data origin,
 instrument, timestamp, sense resistance, sample count, analysis criteria,
 voltage/current vector plots and event metrics. Simulations and reanalyses
-are explicitly labeled. Tables and long notes are paginated. For bounded output
+are explicitly labeled. Forced captures retain their warning in both report languages:
+zero time is not a signal edge. Tables and long notes are paginated. For bounded output
 size, the table shows the first 200 events; the complete list remains in CSV.
 Each export creates a separate PDF under the run's `reports/` directory.
 
@@ -677,7 +689,9 @@ action uses the same C configuration mode, then resumes continuous acquisition.
 The CLI accepts `--tempo-div` in **seconds**, for example
 `--tempo-div 0.000210` for 210 µs/div. Use a value on the selected model's
 grid; a setting quantized to a different value by the scope fails readback
-confirmation. The browser provides the unit selector and step controls.
+confirmation. The browser provides the unit selector and step controls. Screen-center
+limits depend on the selected vertical scale and physical probe attenuation; unsupported
+offsets are rejected before configuration writes.
 
 ### Other operating modes
 
@@ -794,6 +808,13 @@ In exported directions, `subida` means rising current and `descida` means
 falling current. Sample standard deviation is empty when fewer than two
 observations are available.
 
+The event selector and comparison use pages of at most 200 transitions. Previous/next
+controls let you reach every saved event. CSV exports retain the complete event list.
+PNG export creates one overview and up to 20 event-detail images per capture,
+prioritizing valid transitions; its manifest records the omitted image count. Overview
+markers and console event details are bounded as well. PDF tables show the first 200
+events and identify this limit.
+
 Calculations use the full sample record. Plot downsampling preserves
 voltage and current extrema for display. Plots are saved to disk rather
 than opened automatically; open `graficos/visao_geral.png` to view a run.
@@ -818,8 +839,8 @@ transfers, trigger sequencing, export, reanalysis, and plots. Interface
 checks cover configuration readback, exclusive operations, cancellation,
 history, downloads, empty-memory recovery, restarted sessions, hidden-step validation, and local-access restrictions. Model checks exercise
 every catalog entry's configuration, DHO914 waveform acquisition, model
-limits, and rejection of unknown, mismatched, or swapped instruments
-before control commands are sent.
+limits, offset boundaries, and rejection of unknown, mismatched, or swapped instruments
+before control commands are sent, including replacement by the same model with a different serial number or firmware.
 
 Run `make test` for C analysis and Python unit/integration checks, and
 `make sanitize` for the same checks with AddressSanitizer and
@@ -869,6 +890,10 @@ operation separately from electrical interpretation of the waveforms.
 | `testes/` | Analysis and integration tests |
 | `Makefile` | Build, test, plotting dependency, and utility targets |
 
+Offline reanalysis uses the saved current conversion and channel roles, independently of
+hardware drafts, selected model or network fields in the acquisition form. Invalid saved
+profiles are ignored without deleting the original files or hiding valid profiles.
+
 The original utility programs remain available through `make antigos`:
 `identificar_rigol`, `consultar_rigol`, `parametros_onda`, and `receber_onda`,
 all built under `build/`.
@@ -890,7 +915,9 @@ py -3.14 -m venv .venv-windows
 
 The builder compiles the native core, freezes the application and plotting
 runtime, generates version resources and third-party notices, exercises a
-Unicode-path simulations for both measurement modes with PNG and PDF export, and creates the installer and
+Unicode-path simulations for both measurement modes with PNG and PDF export, tests
+repeated opening, immediate restart, exclusive port ownership and failed-start cleanup,
+and creates the installer and
 checksums under `dist\windows`. Build dependencies are pinned separately
 from the runtime requirements used by source installations.
 
@@ -909,7 +936,7 @@ Run it on a Windows account without an existing installed copy, using a
 new empty test directory:
 
 ```powershell
-.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.4.1-windows-x64-setup.exe --work dist\windows\smoke-test
+.\.venv-windows\Scripts\python.exe packaging\windows\smoke.py --installer dist\windows\RigolTransientAnalyzer-0.4.2-windows-x64-setup.exe --work dist\windows\smoke-test
 ```
 
 Instrument references:

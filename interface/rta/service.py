@@ -16,6 +16,8 @@ from .common import ROOT, ACTIVE, DEFAULTS, PHASES, Problem, address, settings, 
 from .instrument import scope_query, read_scope, verify_profile
 from .storage import ResultStore
 from .commands import build_command
+from .reanalysis import reanalysis_settings
+from .common import IdentityChanged
 from .models import MODELS, identify, selected_model
 from .runtime import FROZEN, results_dir, core_executable, hidden_process, process_environment
 from .process import KILL, signal_process, session_options
@@ -82,7 +84,7 @@ class App(Workbench):
         mode = payload.get("mode")
         if mode not in ("real", "demo", "reanalysis"):
             raise Problem("Selecione medição real ou demonstração.")
-        cfg = settings(payload.get("settings", {}), self.connection.get("model"))
+        cfg = None if mode == "reanalysis" else settings(payload.get("settings", {}), self.connection.get("model"))
         source=None
         if mode=="reanalysis":
             origin=payload.get("source",{})
@@ -95,13 +97,9 @@ class App(Workbench):
             previous=detail.get("provenance") or {}
             source=dict(run=detail["id"],capture=capture["id"],metadata=capture["metadata"],
                         root_metadata=previous.get("root_metadata",previous.get("metadata",capture["metadata"])))
-            if capture["metadata"].get("tipo_medicao") == "sinais" or cfg["measurement"] != "transients":
+            if capture["metadata"].get("tipo_medicao") == "sinais":
                 raise Problem("A reanálise por transição está disponível apenas para transientes.")
-            resistance=capture["metadata"]["resistor_ohm"]
-            if "resistor" in payload.get("settings",{}) and cfg["resistor"]!=resistance:
-                raise Problem("A reanálise preserva o resistor e a conversão de corrente originais.")
-            cfg["resistor"]=resistance
-            cfg["captures"]=1
+            cfg = reanalysis_settings(payload.get("settings", {}), capture["metadata"], source["root_metadata"])
         if not isinstance(payload.get("backup",False),bool):
             raise Problem("Opção de backup inválida.")
         # The demonstration is explicitly advertised as a quick 10k-sample run.
@@ -120,6 +118,8 @@ class App(Workbench):
                 raise Problem("Conecte e identifique o Rigol neste endereço antes de medir.", 409)
             if mode == "real":
                 cfg = settings(cfg | {"model": self.connection["model"]})
+            if mode == "real":
+                cfg["_identity"] = self.connection.get("identity")
             if not self.executable.is_file():
                 raise Problem("Componente de medição ausente. Reinstale o Rigol Transient Analyzer." if FROZEN else
                               "O programa de medição não foi compilado. Execute make.", 503)
@@ -135,7 +135,8 @@ class App(Workbench):
         if mode=="reanalysis":
             origin=self.job["source"]
             source=self.store.download(origin["run"],origin["capture"],"amostras.csv")
-        return build_command(self.executable, self.results, run, mode, cfg, configuration_only,input_file=source)
+        return build_command(self.executable, self.results, run, mode, cfg, configuration_only,input_file=source,
+                             expected_identity=self.connection.get("identity") if mode=="real" else None)
     def _work(self, run, mode, cfg):
         process = None
         error = ""
@@ -204,7 +205,7 @@ class App(Workbench):
             stop_warning = ""
             if cancelled and mode == "real":
                 try:
-                    if read_scope(cfg["ip"], cfg["port"], "stop", cfg["model"], timeout=2)["state"] != "STOP":
+                    if read_scope(cfg["ip"], cfg["port"], "stop", cfg["model"], timeout=2, expected_identity=cfg.get("_identity"))["state"] != "STOP":
                         stop_warning = " Não foi possível confirmar STOP no Rigol."
                 except (OSError, Problem):
                     stop_warning = " Não foi possível confirmar STOP no Rigol."
@@ -319,12 +320,15 @@ class App(Workbench):
                 result = subprocess.run(command, cwd=self.root, capture_output=True, text=True,
                                         encoding="utf-8", errors="replace", timeout=25, **hidden_process())
                 if result.returncode:
-                    raise Problem((result.stderr or result.stdout).strip()[-1000:] or
-                                  "O Rigol não confirmou a configuração.", 502)
-            state = read_scope(cfg["ip"], cfg["port"], action if action in {"run", "stop", "autoset"} else "read", cfg["model"], timeout=20 if action=="autoset" else 10)
+                    failure = (result.stderr or result.stdout).strip()[-1000:]
+                    if "A identidade do instrumento mudou." in failure:
+                        raise IdentityChanged()
+                    raise Problem(failure or "O Rigol não confirmou a configuração.", 502)
+            state = read_scope(cfg["ip"], cfg["port"], action if action in {"run", "stop", "autoset"} else "read", cfg["model"], timeout=20 if action=="autoset" else 10,
+                               expected_identity=self.connection.get("identity"))
             if action == "apply":
                 verify_profile(state, cfg)
-                state = read_scope(cfg["ip"], cfg["port"], "run", cfg["model"])
+                state = read_scope(cfg["ip"], cfg["port"], "run", cfg["model"], expected_identity=self.connection.get("identity"))
             with self.lock:
                 self.scope["snapshot"] = state
             return state
@@ -335,7 +339,7 @@ class App(Workbench):
         except (OSError, Problem) as error:
             with self.lock:
                 self.scope["error"] = str(error)
-                if isinstance(error, OSError):
+                if isinstance(error, (OSError, IdentityChanged)):
                     self.connection["connected"] = False
             if isinstance(error, Problem):
                 raise

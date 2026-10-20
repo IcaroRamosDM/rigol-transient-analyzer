@@ -141,6 +141,7 @@ def main():
         "--add-binary", str(core) + os.pathsep + "core",
         "--add-data", str(ROOT / "interface/static") + os.pathsep + "interface/static",
         "--add-data", str(ROOT / "include/rigol_models.def") + os.pathsep + "include",
+        "--add-data", str(ROOT / "include/rigol_offset_limits.def") + os.pathsep + "include",
         "--add-data", str(ROOT / "VERSION") + os.pathsep + ".",
         "--add-data", str(ROOT / "README.md") + os.pathsep + ".",
         "--add-data", str(licenses) + os.pathsep + "third-party-licenses",
@@ -154,6 +155,8 @@ def main():
     uninstall = installer_inputs(bundle, output)
     executable = bundle / "RigolTransientAnalyzer.exe"
     run([executable, "--self-test", output / "self-test.json"], timeout=120)
+    run([sys.executable, HERE / "startup_smoke.py", "--app", executable,
+         "--output", output / "startup-test.json"], timeout=150)
     if not args.skip_installer:
         compiler = args.makensis or shutil.which("makensis")
         if not compiler:

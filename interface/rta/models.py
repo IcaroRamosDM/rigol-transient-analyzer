@@ -32,7 +32,27 @@ def _catalog():
     return result
 
 
+def _offset_limits():
+    from .runtime import ROOT
+    limits = []
+    for line in (ROOT / "include/rigol_offset_limits.def").read_text(encoding="utf-8").splitlines():
+        if line.startswith("RIGOL_OFFSET("):
+            scale, offset, inclusive = ast.literal_eval(line[len("RIGOL_OFFSET"):])
+            limits.append(dict(scale=scale, offset=offset, inclusive=bool(inclusive)))
+    if len(limits) != 5:
+        raise ValueError("Invalid offset limits")
+    return limits
+
+OFFSET_LIMITS = _offset_limits()
+
+def offset_limit(scale, probe):
+    normal = scale / probe
+    return next((row["offset"]*probe for row in OFFSET_LIMITS
+                 if normal < row["scale"] or row["inclusive"] and normal <= row["scale"]), 0)
+
 MODELS = _catalog()
+for _profile in MODELS.values():
+    _profile["offset_limits"] = OFFSET_LIMITS
 
 
 def selected_model(value):

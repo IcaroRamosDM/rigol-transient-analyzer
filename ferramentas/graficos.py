@@ -30,6 +30,24 @@ def indices_envelope(v, i, limite=8000):
     return np.array(sorted(indices))
 
 
+MAX_EVENT_PLOTS = 20
+MAX_EVENT_MARKERS = 200
+
+def select_events(pasta, total):
+    """Bound plotting work while leaving every event in the original CSV."""
+    fallback, valid, markers = [], [], []
+    targets=set(np.linspace(0,max(0,total-1),min(total,MAX_EVENT_MARKERS),dtype=int))
+    count=0
+    with (pasta / "eventos.csv").open(newline="") as stream:
+        for row in csv.DictReader(stream):
+            if len(fallback)<MAX_EVENT_PLOTS:fallback.append(row)
+            if row["status"]=="valido" and len(valid)<MAX_EVENT_PLOTS:valid.append(row)
+            if count in targets:markers.append(float(row["tempo_s"]))
+            count+=1
+    selected=valid+[row for row in fallback if row not in valid]
+    return selected[:MAX_EVENT_PLOTS],markers,count
+
+
 def desenhar(pasta, limite):
     meta = json.loads((pasta / "metadados.json").read_text(encoding="utf-8"))
     dados = np.loadtxt(pasta / "amostras.csv", delimiter=",", skiprows=1, ndmin=2)
@@ -38,8 +56,7 @@ def desenhar(pasta, limite):
     if dados.shape[1] != 3 or len(dados) != meta["pontos"] or not np.isfinite(dados).all():
         raise ValueError(f"Dados inconsistentes em {pasta}")
     t, v, i = dados.T
-    with (pasta / "eventos.csv").open(newline="") as f:
-        eventos = list(csv.DictReader(f))
+    eventos, markers, total_events = select_events(pasta, meta["bordas"])
     destino = pasta / "graficos"
     destino.mkdir(exist_ok=True)
     estilo = {"linewidth": 0.8}
@@ -53,8 +70,8 @@ def desenhar(pasta, limite):
     fig.suptitle(f"{meta['origem']} · captura {meta['numero']} · {meta['instante_utc']}")
     for ax in axes:
         ax.grid(alpha=0.25)
-        for e in eventos:
-            ax.axvline(float(e["tempo_s"]) * 1e3, color="#888", alpha=0.3, linewidth=0.7)
+        for marker in markers:
+            ax.axvline(marker * 1e3, color="#888", alpha=0.3, linewidth=0.7)
     fig.savefig(destino / "visao_geral.png", dpi=170)
     plt.close(fig)
     arquivos = ["visao_geral.png"]
@@ -104,8 +121,14 @@ def desenhar(pasta, limite):
         "limite_visual_aproximado": limite, "reducao": "extremos de ambos os canais por intervalo",
         "calculos": "Todos os pontos originais; a reducao e somente visual",
         "arquivos": arquivos,
+        "eventos_total": total_events,
+        "limite_graficos_eventos": MAX_EVENT_PLOTS,
+        "graficos_eventos": len(arquivos)-1,
+        "eventos_sem_png": max(0,total_events-(len(arquivos)-1)),
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Gráficos: {destino} ({len(arquivos)} imagens)")
+    if total_events > len(arquivos)-1:
+        print(f"PNGs detalhados limitados a {MAX_EVENT_PLOTS} eventos; todas as transicoes permanecem em eventos.csv.")
     return len(arquivos)
 
 
@@ -129,7 +152,7 @@ def desenhar_sinais(pasta, meta, dados, limite):
         ax=axes[i,0];ax.plot(dados[idx,0]*1e3,dados[idx,i+1],linewidth=.8,color=["#c77c00","#087f8c","#9353a2","#3465b4"][i])
         ax.set_ylabel("CH"+str(ch["numero"])+" (V)");ax.grid(alpha=.25)
     axes[-1,0].set_xlabel("Time relative to trigger (ms)")
-    fig.suptitle(meta["origem"]+" · "+meta["instante_utc"])
+    fig.suptitle(meta["origem"]+" · "+meta["instante_utc"]+("\nDisparo forcado; sem alinhamento por borda" if meta.get("disparo_forcado") else ""))
     fig.savefig(target/"visao_geral.png",dpi=170);plt.close(fig)
     (target/"graficos.json").write_text(json.dumps(dict(origem=meta["origem"],arquivos=["visao_geral.png"],calculos="Full record; visual reduction preserves all channel extrema"))+"\n",encoding="utf-8")
     return 1

@@ -52,10 +52,10 @@ def evaluate(state, measurements, cfg):
 
 
 def diagnose(cfg):
-    state=read_scope(cfg["ip"],cfg["port"],model=cfg["model"])
+    state=read_scope(cfg["ip"],cfg["port"],model=cfg["model"], expected_identity=cfg.get("_identity"))
     values={}
     with Session(cfg["ip"],cfg["port"],timeout=12) as session:
-        session.identity(cfg["model"])
+        session.identity(cfg["model"], cfg.get("_identity"))
         queries=[]
         for channel in cfg["channels"]:
             ch=channel["number"]

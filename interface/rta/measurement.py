@@ -1,6 +1,7 @@
 """Measurement contracts shared by profiles, acquisition, and instrument controls."""
 import math
 from .common import Problem
+from .models import offset_limit
 
 
 def finite(value):
@@ -34,8 +35,11 @@ def validate_measurement(cfg, profile):
         if not finite(c["probe"]) or c["probe"] not in (1, 10) or not finite(c["scale"]) or not finite(c["center"]) or c["scale"] <= 0 or c["coupling"] not in ("AC", "DC") or c["bandwidth"] not in ("OFF", "20M"):
             raise Problem("Configuração de canal inválida.")
         if cfg["configuration"] == "guided":
-            if not profile["min_scale"]*c["probe"] <= c["scale"] <= profile["max_scale"]*c["probe"] or abs(c["center"]) > 100*c["probe"]:
+            if not profile["min_scale"]*c["probe"] <= c["scale"] <= profile["max_scale"]*c["probe"]:
                 raise Problem("Escala ou centro fora da faixa do canal.")
+            limit = offset_limit(c["scale"], c["probe"])
+            if abs(c["center"]) > limit:
+                raise Problem("Centro fora da faixa de offset para esta escala e ponta. Limite: " + str(limit) + " V.")
         c["number"] = int(c["number"])
         c["probe"] = int(c["probe"])
         normalized.append(c)

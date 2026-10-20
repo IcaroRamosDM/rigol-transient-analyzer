@@ -44,10 +44,22 @@ export function eventRange(zoom=false) {
   setRange([Math.max(m.t0_s, start), Math.min(m.t0_s + (m.pontos - 1) * m.dt_s, end)], true);
   $(zoom ? "edgeZoom" : "eventWindow").classList.add("active");
 }
-export function selectEvent(index) {
+let eventRequest=0;
+export async function selectEvent(index) {
   if (!S.capture || !S.capture.events.length) return;
-  S.event = Math.max(0, Math.min(index, S.capture.events.length - 1));
-  $("eventSelect").value = S.event; document.dispatchEvent(new CustomEvent("rta:event-render")); eventRange();
+  const capture=S.capture,offset=capture.event_offset||0,total=capture.event_count??capture.events.length;
+  const target=offset+index,request=++eventRequest;
+  if(target<0||target>=total)return;
+  try{
+    if(index<0||index>=capture.events.length){
+      const query=new URLSearchParams({run:S.run.id,capture:capture.id,offset:Math.floor(target/200)*200,limit:200});
+      const page=await api("/api/events?"+query);
+      if(S.capture!==capture||request!==eventRequest)return;
+      capture.events=page.events;capture.event_offset=page.offset;
+    }
+    S.event=target-(capture.event_offset||0);
+    document.dispatchEvent(new CustomEvent("rta:event-render"));eventRange();
+  }catch(error){say(error.message,"error");}
 }
 export function zoom(factor) {
   if (!S.data) return;

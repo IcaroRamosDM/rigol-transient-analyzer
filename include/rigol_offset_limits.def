@@ -1,0 +1,7 @@
+// Input scale is normalized to a 1x probe. Values follow the Programming Guide.
+// Maximum V/div, maximum absolute offset V, inclusive upper scale bound.
+RIGOL_OFFSET(0.0005, 0.5, 0)
+RIGOL_OFFSET(0.065, 1, 1)
+RIGOL_OFFSET(0.26, 8, 1)
+RIGOL_OFFSET(2.65, 20, 1)
+RIGOL_OFFSET(10, 100, 1)

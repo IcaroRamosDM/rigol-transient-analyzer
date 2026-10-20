@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
+from datetime import datetime, timezone
 
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -64,18 +65,26 @@ def self_test(destination):
 
 
 def main():
-    directory = state_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    logs = directory / "logs"; logs.mkdir(exist_ok=True)
-    os.environ.setdefault("MPLCONFIGDIR", str(directory / "matplotlib"))
-    if FROZEN:
-        stream = (logs / "application.log").open("a", encoding="utf-8", buffering=1)
-        sys.stdout = stream; sys.stderr = stream
     args = sys.argv[1:]
     quiet = "--quiet" in args
+    try:
+        directory = state_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        logs = directory / "logs"; logs.mkdir(exist_ok=True)
+        os.environ.setdefault("MPLCONFIGDIR", str(directory / "matplotlib"))
+        if FROZEN:
+            stream = (logs / "application.log").open("a", encoding="utf-8", buffering=1)
+            sys.stdout = stream; sys.stderr = stream
+    except Exception as error:
+        if not quiet:
+            message("Não foi possível preparar os dados do aplicativo.\n\nDetalhe: " + str(error))
+        return 1
     if quiet:
         sys.argv.remove("--quiet")
         args.remove("--quiet")
+    if FROZEN:
+        print(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] "
+              f"v{VERSION} PID={os.getpid()} mode={args[0] if args else 'open'}", flush=True)
     try:
         if args[:1] == ["--render-plots"] and len(args) == 2:
             from ferramentas.graficos import main as render
@@ -101,8 +110,11 @@ def main():
         if isinstance(error, SystemExit) and error.code in (None, 0):
             return 0
         traceback.print_exc()
+        sys.stderr.flush()
         if not quiet and not any(flag in args for flag in ("--render-plots", "--self-test")):
-            message("Não foi possível iniciar o aplicativo.\n\nRegistro: " + str(logs / "application.log"))
+            message("Não foi possível iniciar o aplicativo.\n\nDetalhe: " +
+                    (str(error) or type(error).__name__) +
+                    "\n\nRegistro: " + str(logs / "application.log"))
         return 1
 
 

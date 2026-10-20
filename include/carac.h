@@ -28,7 +28,7 @@ typedef struct {
   size_t pontos;
   unsigned capturas, porta, ch_v, ch_i, sonda_v, sonda_i;
   bool existente, simular, configurar, graficos, captura_livre;
-  const char *ip, *saida, *entrada, *banda, *modelo;
+  const char *ip, *saida, *entrada, *banda, *modelo, *identidade_esperada;
 } CtConfig;
 
 typedef struct {
@@ -72,6 +72,7 @@ typedef struct {
   double tempo_min, tempo_max, escala_min;
   bool validado;
 } CtModelo;
+double ct_limite_offset(double escala, unsigned sonda);
 const CtModelo *ct_modelo(const char *nome);
 const CtModelo *ct_modelo_identidade(const char *id);
 void ct_listar_modelos(void);
